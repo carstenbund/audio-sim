@@ -7,7 +7,7 @@ configurable topology, damping, and drive patterns.
 
 import numpy as np
 from dataclasses import dataclass, field
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Sequence, Literal
 
 
 @dataclass
@@ -150,14 +150,84 @@ class ModalNetwork:
     def perturb(self, strength: float):
         """
         Add random perturbation to network state.
-        
+
         Args:
             strength: Standard deviation of complex Gaussian noise
         """
-        noise = strength * (self._rng.standard_normal((self.p.N, self.p.K)) 
+        noise = strength * (self._rng.standard_normal((self.p.N, self.p.K))
                            + 1j * self._rng.standard_normal((self.p.N, self.p.K)))
         self.a += noise.astype(np.complex64)
-    
+
+    def perturb_nodes(
+        self,
+        strength: float,
+        target_nodes: Sequence[int],
+        mode: Optional[int] = None,
+        kind: Literal["noise", "impulse"] = "noise",
+        phase: float = 0.0,
+        seed: Optional[int] = None,
+    ):
+        """
+        Localized perturbation (participatory trigger) applied to selected nodes.
+
+        Args:
+            strength: amplitude / stddev depending on kind
+            target_nodes: which nodes are perturbed
+            mode: if None, perturb all modes; else only this mode index
+            kind:
+              - "noise": complex Gaussian kick (stochastic inquiry)
+              - "impulse": deterministic complex kick with given phase (clean inquiry)
+            phase: phase (radians) for deterministic impulse
+            seed: optional seed for reproducible noise
+        """
+        rng = self._rng if seed is None else np.random.default_rng(seed)
+        nodes = np.array(list(target_nodes), dtype=int)
+
+        if mode is None:
+            sl = (nodes, slice(None))
+            shape = (len(nodes), self.p.K)
+        else:
+            sl = (nodes, mode)
+            shape = (len(nodes),)
+
+        if kind == "noise":
+            kick = strength * (rng.standard_normal(shape) + 1j * rng.standard_normal(shape))
+            self.a[sl] += kick.astype(np.complex64)
+        elif kind == "impulse":
+            kick = (strength * np.exp(1j * phase)) * np.ones(shape, dtype=np.complex64)
+            self.a[sl] += kick
+        else:
+            raise ValueError(f"Unknown kind={kind}")
+
+    def phase_kick(
+        self,
+        delta_phi: float,
+        target_nodes: Sequence[int],
+        mode: int = 0
+    ):
+        """
+        Pure phase perturbation: rotates complex state without changing magnitude.
+        This is the closest analog to a 'phase inquiry' in coherence terms.
+        """
+        nodes = np.array(list(target_nodes), dtype=int)
+        self.a[nodes, mode] *= np.exp(1j * delta_phi).astype(np.complex64)
+
+    def heterodyne_probe(
+        self,
+        target_nodes: Sequence[int],
+        mode_a: int,
+        mode_b: int,
+        out_mode: int,
+        strength: float = 0.2
+    ):
+        """
+        Optional nonlinear probe: inject a product term into out_mode.
+        This emulates a simple intermodulation/heterodyne-like interaction in state space.
+        (Not physically perfect, but useful as a controlled 'logic-like' trigger.)
+        """
+        nodes = np.array(list(target_nodes), dtype=int)
+        self.a[nodes, out_mode] += strength * (self.a[nodes, mode_a] * self.a[nodes, mode_b]).astype(np.complex64)
+
     # === Observables ===
     
     def modal_energy(self) -> np.ndarray:
