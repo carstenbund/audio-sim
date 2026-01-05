@@ -91,9 +91,11 @@ modal-attractors/
 ├── experiments/
 │   ├── parameter_sweep.py
 │   ├── perturbation_study.py
-│   └── switching_demo.py
+│   ├── switching_demo.py
+│   └── quantum_coherence.py
 ├── docs/
-│   └── theory.md
+│   ├── theory.md
+│   └── quantum_coherence_theory.md
 ├── requirements.txt
 ├── setup.py
 └── README.md
@@ -131,6 +133,16 @@ Demonstrate attractor selection and switching:
 python experiments/switching_demo.py
 ```
 
+### Quantum Coherence (State-Selective Damping)
+
+Explore decoherence as a constructive force through adaptive damping:
+
+```bash
+python experiments/quantum_coherence.py
+```
+
+This experiment demonstrates how state-selective damping can stabilize coherent patterns by treating decoherence as a selection pressure rather than pure loss. States matching a target pattern experience low damping (grace), while deviating states experience high damping (gravity).
+
 ## Key Parameters
 
 | Parameter | Default | Description |
@@ -156,6 +168,13 @@ See [docs/theory.md](docs/theory.md) for detailed discussion of:
 - Attractor basin geometry
 - Entropy as a gating metric
 - Codebook design principles
+
+See [docs/quantum_coherence_theory.md](docs/quantum_coherence_theory.md) for:
+
+- State-selective damping as constructive decoherence
+- Quantum Darwinism and dissipative state preparation
+- Grace through environmental coupling
+- Basin geometry sculpting
 
 ## License
 
