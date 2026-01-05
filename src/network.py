@@ -215,3 +215,44 @@ class ModalNetwork:
     def state_vector(self) -> np.ndarray:
         """Return flattened state for comparisons."""
         return self.a.flatten()
+
+    def order_parameter_q0(self, mode: int = 0) -> float:
+        """
+        Compute q=0 spatial mode order parameter (uniform phase).
+
+        S_q0 = |⟨a_j⟩| measures in-phase synchronization across all nodes.
+
+        Args:
+            mode: Which temporal mode to measure (default 0)
+
+        Returns:
+            Magnitude of mean amplitude (0 to 1)
+        """
+        return np.abs(np.mean(self.a[:, mode]))
+
+    def order_parameter_qpi(self, mode: int = 0) -> float:
+        """
+        Compute q=π spatial mode order parameter (alternating phase).
+
+        S_qπ = |⟨(-1)^j a_j⟩| measures alternating-phase pattern.
+
+        Args:
+            mode: Which temporal mode to measure (default 0)
+
+        Returns:
+            Magnitude of alternating-weighted mean (0 to 1)
+        """
+        alternating = (-1) ** np.arange(self.p.N)
+        return np.abs(np.mean(self.a[:, mode] * alternating))
+
+    def order_parameters(self, mode: int = 0) -> dict:
+        """
+        Compute all spatial order parameters.
+
+        Returns:
+            Dictionary with 'q0' and 'qpi' order parameters
+        """
+        return {
+            'q0': self.order_parameter_q0(mode),
+            'qpi': self.order_parameter_qpi(mode)
+        }
