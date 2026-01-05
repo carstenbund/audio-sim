@@ -59,9 +59,9 @@ DEVICE_INDEX = None           # Auto-detect, or set manually
 
 # Experiment timeline
 SETTLE_TIME = 4.0             # Let first attractor settle
-PERTURB_TIME = 6.0            # Apply perturbation
-SWITCH_TIME = 10.0            # Switch to different drive pattern
-TOTAL_TIME = 16.0             # Total duration
+PERTURB_TIME = 30.0           # Apply perturbation
+SWITCH_TIME = 70.0            # Switch to different drive pattern
+TOTAL_TIME = 120.0            # Total duration
 
 # ==========================
 # SHARED STATE
@@ -116,7 +116,7 @@ def simulation_loop(state: SharedState, params: NetworkParams, verbose: bool = T
     switched = False
 
     # Trigger song setup
-    song = TriggerSong(bpm=90.0, bars=8)
+    song = TriggerSong(bpm=90.0, duration=TOTAL_TIME)
     events = song.events()
     event_idx = 0
 
@@ -125,7 +125,12 @@ def simulation_loop(state: SharedState, params: NetworkParams, verbose: bool = T
         print(f"0.0-{SETTLE_TIME}s: ADJACENT attractor (nodes [0,1])")
         print(f"{PERTURB_TIME}s: Perturbation applied")
         print(f"{SWITCH_TIME}s: Switch to OPPOSITE attractor (nodes [0,4])")
-        print(f"{TOTAL_TIME}s: End\n")
+        print(f"{TOTAL_TIME}s: End")
+        print(f"\n=== Trigger Song Movements ===")
+        print(f"0-24s: INTRO - Sparse phase kicks rotating around ring")
+        print(f"24-60s: DEVELOPMENT - Mixed triggers (impulse + phase + noise)")
+        print(f"60-96s: COMPLEXITY - Dense heterodyne probes + syncopation")
+        print(f"96-120s: RESOLUTION - Simple impulses calming down\n")
 
     while state.is_running() and t < TOTAL_TIME:
         # Determine drive pattern
@@ -250,9 +255,11 @@ def generate_wav_simulation(state: SharedState, params: NetworkParams,
     switched = False
 
     # Trigger song setup
-    song = TriggerSong(bpm=90.0, bars=8)
+    song = TriggerSong(bpm=90.0, duration=TOTAL_TIME)
     events = song.events()
     event_idx = 0
+
+    print(f"Generating {len(events)} trigger events over {TOTAL_TIME}s\n")
 
     for sim_step in range(int(TOTAL_TIME / params.dt)):
         t = sim_step * params.dt
@@ -336,11 +343,12 @@ def run_realtime_audio(params: NetworkParams):
     print(f"  Channel 1: q=π mode @ {CARRIER_FREQS[1]} Hz")
     print(f"\nDuration: {TOTAL_TIME}s")
     print("\nListening guide:")
-    print("  - Initially: 220 Hz should dominate (ADJACENT attractor)")
-    print("  - At ~6s: Hear disruption from perturbation")
-    print("  - Watch 220 Hz recover")
-    print("  - At ~10s: Transition to 330 Hz (OPPOSITE attractor)")
-    print("  - 330 Hz locks in, 220 Hz fades\n")
+    print("  - 0-24s: Gentle phase kick inquiries rotating around ring")
+    print("  - 24-60s: Mixed triggers - rhythmic plucks, phase nudges, noise")
+    print("  - At ~30s: Strong perturbation - hear system wobble and recover")
+    print("  - 60-96s: Dense complexity - heterodyne probes, syncopation")
+    print("  - At ~70s: Attractor switch - 220 Hz → 330 Hz transition")
+    print("  - 96-120s: Resolution - calm impulses, system settles\n")
 
     # Check available devices
     try:
@@ -437,30 +445,47 @@ What you heard (or will hear in the WAV):
    - 330 Hz (q=π) remains quiet
    - This is the ADJACENT attractor (all-in-phase)
 
-2. PERTURBATION (~6s):
+2. INTRO TRIGGERS (0-24s):
+   - Sparse phase kicks rotate around the ring
+   - Gentle coherence inquiries
+   - Listen for subtle tremors in the carriers
+
+3. PERTURBATION (~30s):
+   - Strong noise perturbation applied
    - Both channels wobble
    - System momentarily loses coherence
-   - Entropy spike (audible as amplitude dip)
 
-3. RECOVERY (6-10s):
-   - 220 Hz snaps back to previous level
-   - This demonstrates attractor basin stability
-   - The system "remembers" its state
+4. DEVELOPMENT TRIGGERS (24-60s):
+   - Mixed trigger types (impulse + phase + noise)
+   - Rhythmic plucks and phase nudges
+   - Occasional noise bursts on beat 4
+   - System responds with varying recovery times
 
-4. ATTRACTOR SWITCH (10s+):
-   - Drive pattern changes
-   - 220 Hz weakens
-   - 330 Hz locks in and grows
+5. ATTRACTOR SWITCH (70s):
+   - Drive pattern changes to OPPOSITE nodes
+   - 220 Hz weakens, 330 Hz locks in
    - This is the OPPOSITE attractor (alternating-phase)
+
+6. COMPLEXITY TRIGGERS (60-96s):
+   - Dense heterodyne probes create nonlinear interactions
+   - Syncopated noise and phase kicks
+   - Most chaotic section - listen for mode competition
+
+7. RESOLUTION (96-120s):
+   - Simple impulses calm the system
+   - Triggers reverse direction around ring
+   - System settles into final attractor state
 
 This is AUDIBLE PROOF of:
 - Distributed memory (order parameter = persistent tone)
 - Multiple stable attractors (different channels)
-- Recovery from perturbation (return to baseline)
+- Recovery from varied perturbation types
 - State switching (mode handover)
+- Participatory inquiry (triggers "ask questions", system "responds")
 
 The sound is NOT a visualization metaphor—it is a direct physical
 observable (spatial mode amplitude) that encodes the system's state.
+The triggers are "songs-as-inquiries" that probe coherence structure.
 """)
 
     print("=" * 70)

@@ -39,42 +39,129 @@ class TriggerSchedule:
 
 class TriggerSong:
     """
-    A simple musical trigger generator:
-    - pulses every beat
-    - alternates motifs A/B per bar
+    A rich musical trigger generator with multiple movements.
+
+    Creates a 120-second composition with varied trigger types,
+    target nodes, and rhythmic patterns to explore system response.
     """
-    def __init__(self, bpm: float = 90.0, bars: int = 8):
+    def __init__(self, bpm: float = 90.0, duration: float = 120.0):
         self.beat_s = 60.0 / bpm
         self.bar_s = 4 * self.beat_s
-        self.bars = bars
+        self.duration = duration
+        self.num_bars = int(duration / self.bar_s)
 
     def events(self) -> List[TriggerEvent]:
-        evs: List[TriggerEvent] = []
-        t = 0.0
-        for bar in range(self.bars):
-            motif = "A" if (bar % 2 == 0) else "B"
-            # 4 beats per bar
-            for b in range(4):
-                t_on = t + b * self.beat_s
+        """
+        Generate a varied trigger sequence across multiple movements.
 
-                if motif == "A":
-                    # Motif A: phase kick on node 0, mode 0
+        Movement structure:
+        - Intro (0-24s): Sparse phase kicks, establishing baseline
+        - Development (24-60s): Mixed triggers exploring all types
+        - Complexity (60-96s): Dense heterodyne probes and noise
+        - Resolution (96-120s): Return to simple impulses
+        """
+        evs: List[TriggerEvent] = []
+
+        for bar in range(self.num_bars):
+            t_bar = bar * self.bar_s
+
+            # Determine movement section
+            if t_bar < 24.0:
+                # INTRO: Sparse phase kicks rotating around the ring
+                node = bar % 8
+                evs.append(TriggerEvent(
+                    t_on=t_bar,
+                    target_nodes=[node],
+                    kind="phase_kick",
+                    delta_phi=np.pi / (8 + bar % 4),  # Varying phase
+                    mode=0
+                ))
+
+            elif t_bar < 60.0:
+                # DEVELOPMENT: Mixed trigger types
+                for beat in range(4):
+                    t = t_bar + beat * self.beat_s
+
+                    if beat == 0:
+                        # Downbeat: impulse pluck
+                        evs.append(TriggerEvent(
+                            t_on=t,
+                            target_nodes=[bar % 8],
+                            kind="impulse",
+                            strength=0.1 + 0.05 * (bar % 3),
+                            phase=beat * np.pi / 4,
+                            mode=0
+                        ))
+                    elif beat == 2:
+                        # Mid-bar: phase kick on opposite node
+                        evs.append(TriggerEvent(
+                            t_on=t,
+                            target_nodes=[(bar + 4) % 8],
+                            kind="phase_kick",
+                            delta_phi=np.pi / 4,
+                            mode=0
+                        ))
+
+                    # Add occasional noise bursts
+                    if bar % 3 == 0 and beat == 3:
+                        evs.append(TriggerEvent(
+                            t_on=t,
+                            target_nodes=[bar % 8, (bar + 1) % 8],
+                            kind="noise",
+                            strength=0.08,
+                            mode=0
+                        ))
+
+            elif t_bar < 96.0:
+                # COMPLEXITY: Heterodyne probes and dense patterns
+                for beat in range(4):
+                    t = t_bar + beat * self.beat_s
+
+                    # Heterodyne probes on beats 0 and 2
+                    if beat in [0, 2]:
+                        evs.append(TriggerEvent(
+                            t_on=t,
+                            target_nodes=[(bar + beat) % 8],
+                            kind="heterodyne",
+                            mode_a=0,
+                            mode_b=1,
+                            out_mode=0,
+                            strength=0.15 + 0.05 * (bar % 2)
+                        ))
+
+                    # Phase kicks on offbeats
+                    if beat in [1, 3]:
+                        evs.append(TriggerEvent(
+                            t_on=t,
+                            target_nodes=[(bar * 2 + beat) % 8],
+                            kind="phase_kick",
+                            delta_phi=np.pi / (3 + beat),
+                            mode=0
+                        ))
+
+                    # Syncopated noise
+                    if bar % 2 == 0 and beat == 1:
+                        evs.append(TriggerEvent(
+                            t_on=t + self.beat_s * 0.5,  # Off-beat
+                            target_nodes=[(bar + 3) % 8, (bar + 5) % 8],
+                            kind="noise",
+                            strength=0.06,
+                            mode=0
+                        ))
+
+            else:
+                # RESOLUTION: Simple impulses, calming down
+                for beat in [0, 2]:
+                    t = t_bar + beat * self.beat_s
                     evs.append(TriggerEvent(
-                        t_on=t_on,
-                        target_nodes=[0],
-                        kind="phase_kick",
-                        mode=0,
-                        delta_phi=np.pi/6  # gentle phase nudge
-                    ))
-                else:
-                    # Motif B: deterministic impulse "pluck" on node 4
-                    evs.append(TriggerEvent(
-                        t_on=t_on,
-                        target_nodes=[4],
+                        t_on=t,
+                        target_nodes=[(8 - bar) % 8],  # Reverse direction
                         kind="impulse",
-                        strength=0.15,
+                        strength=0.12,
                         phase=0.0,
                         mode=0
                     ))
-            t += self.bar_s
+
+        # Sort by time
+        evs.sort(key=lambda e: e.t_on)
         return evs
