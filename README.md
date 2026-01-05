@@ -91,7 +91,9 @@ modal-attractors/
 ├── experiments/
 │   ├── parameter_sweep.py
 │   ├── perturbation_study.py
-│   └── switching_demo.py
+│   ├── switching_demo.py
+│   ├── grace_gravity.py
+│   └── audio_sonification.py
 ├── docs/
 │   └── theory.md
 ├── requirements.txt
@@ -130,6 +132,37 @@ Demonstrate attractor selection and switching:
 ```bash
 python experiments/switching_demo.py
 ```
+
+### Audio Sonification
+
+**Hear attractor states in real-time** through spatial mode order parameters:
+
+```bash
+python experiments/audio_sonification.py
+```
+
+This experiment sonifies the network's spatial coherence through two audio channels:
+- **Channel 0 (220 Hz)**: q=0 mode (all-in-phase pattern)
+- **Channel 1 (330 Hz)**: q=π mode (alternating-phase pattern)
+
+You will hear:
+- Attractor locking (tones growing and stabilizing)
+- Perturbation and recovery (amplitude dip and restoration)
+- Attractor switching (mode handover between channels)
+
+**Requirements**: For real-time audio on macOS/Linux, install PortAudio:
+```bash
+# macOS
+brew install portaudio
+
+# Ubuntu/Debian
+sudo apt-get install libportaudio2
+
+# Then install Python package
+pip install sounddevice
+```
+
+**Fallback**: Without audio hardware, generates `audio_sonification.wav` (48kHz stereo)
 
 ## Key Parameters
 
