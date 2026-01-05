@@ -168,8 +168,9 @@ If you use this code in your research, please cite:
 ```bibtex
 @software{modal_attractors,
   title = {Modal Attractors: Geometry-Stabilized Spectral States in Coupled Oscillator Networks},
-  year = {2025},
-  url = {https://github.com/yourusername/modal-attractors}
+  year = {2026},
+  url2 = {https://github.com/carstenbund/modal-attractors}
+  url = {https://github.com/carstenbund/audio-sim}
 }
 ```
 
