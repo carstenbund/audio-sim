@@ -30,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.network import ModalNetwork, NetworkParams
 from src.drive import make_drive
+from src.triggers import TriggerSong
 
 # Try to import sounddevice, fallback to WAV generation
 try:
@@ -114,6 +115,11 @@ def simulation_loop(state: SharedState, params: NetworkParams, verbose: bool = T
     perturbed = False
     switched = False
 
+    # Trigger song setup
+    song = TriggerSong(bpm=90.0, bars=8)
+    events = song.events()
+    event_idx = 0
+
     if verbose:
         print("\n=== Simulation Timeline ===")
         print(f"0.0-{SETTLE_TIME}s: ADJACENT attractor (nodes [0,1])")
@@ -133,6 +139,19 @@ def simulation_loop(state: SharedState, params: NetworkParams, verbose: bool = T
 
         drive = make_drive(t, target_nodes, params.N)
         net.step(drive)
+
+        # === Participatory trigger song (state perturbations, not drive) ===
+        while event_idx < len(events) and t >= events[event_idx].t_on:
+            ev = events[event_idx]
+            if ev.kind == "noise":
+                net.perturb_nodes(ev.strength, ev.target_nodes, mode=ev.mode, kind="noise", seed=123)
+            elif ev.kind == "impulse":
+                net.perturb_nodes(ev.strength, ev.target_nodes, mode=ev.mode, kind="impulse", phase=ev.phase)
+            elif ev.kind == "phase_kick":
+                net.phase_kick(ev.delta_phi, ev.target_nodes, mode=ev.mode or 0)
+            elif ev.kind == "heterodyne":
+                net.heterodyne_probe(ev.target_nodes, ev.mode_a, ev.mode_b, ev.out_mode, strength=ev.strength)
+            event_idx += 1
 
         # Apply perturbation
         if t >= PERTURB_TIME and not perturbed:
@@ -230,6 +249,11 @@ def generate_wav_simulation(state: SharedState, params: NetworkParams,
     perturbed = False
     switched = False
 
+    # Trigger song setup
+    song = TriggerSong(bpm=90.0, bars=8)
+    events = song.events()
+    event_idx = 0
+
     for sim_step in range(int(TOTAL_TIME / params.dt)):
         t = sim_step * params.dt
 
@@ -244,6 +268,19 @@ def generate_wav_simulation(state: SharedState, params: NetworkParams,
 
         drive = make_drive(t, target_nodes, params.N)
         net.step(drive)
+
+        # === Participatory trigger song (state perturbations, not drive) ===
+        while event_idx < len(events) and t >= events[event_idx].t_on:
+            ev = events[event_idx]
+            if ev.kind == "noise":
+                net.perturb_nodes(ev.strength, ev.target_nodes, mode=ev.mode, kind="noise", seed=123)
+            elif ev.kind == "impulse":
+                net.perturb_nodes(ev.strength, ev.target_nodes, mode=ev.mode, kind="impulse", phase=ev.phase)
+            elif ev.kind == "phase_kick":
+                net.phase_kick(ev.delta_phi, ev.target_nodes, mode=ev.mode or 0)
+            elif ev.kind == "heterodyne":
+                net.heterodyne_probe(ev.target_nodes, ev.mode_a, ev.mode_b, ev.out_mode, strength=ev.strength)
+            event_idx += 1
 
         # Perturbation
         if t >= PERTURB_TIME and not perturbed:
