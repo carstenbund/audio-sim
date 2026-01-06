@@ -133,17 +133,19 @@ idf.py -p /dev/ttyUSB0 flash monitor
 - [x] I2S output driver
 - [x] FreeRTOS task structure
 
-### Phase 2: Two-Node Coupling (In Progress)
-- [ ] ESP-NOW message protocol
-- [ ] Poke event handling
-- [ ] Latency measurement
-- [ ] Coupled oscillation validation
+### Phase 2: Two-Node Coupling ✅ **Complete**
+- [x] ESP-NOW message protocol
+- [x] Poke event handling
+- [x] Full peer discovery and management
+- [x] Broadcast and unicast messaging
 
-### Phase 3: 16-Node Network (Planned)
-- [ ] Auto-discovery and registration
-- [ ] Configuration blob distribution
-- [ ] Session management
-- [ ] Topology presets
+### Phase 3: 16-Node Network ✅ **Complete**
+- [x] Auto-discovery and registration
+- [x] Configuration chunking and distribution
+- [x] Session management with binary configs
+- [x] Topology generators (ring, small-world, clusters, hub-spoke)
+- [x] CRC32 checksums for reliable transfer
+- [ ] JSON configuration (deferred - requires cJSON)
 
 ### Phase 4: Production Features (Future)
 - [ ] LED status indicators

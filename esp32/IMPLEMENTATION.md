@@ -23,8 +23,8 @@ This document summarizes the ESP32 implementation of the distributed modal reson
 | I2S (implicit) | `audio_i2s.c` | ✓ Complete | PCM5102A driver |
 | Thread model | `main.c` tasks | ✓ Complete | FreeRTOS |
 | Message protocol | `protocol.c` | ✓ Complete | Poke events |
-| ESP-NOW (new) | `esp_now_manager.c` | ⚠ Stub | Phase 2 |
-| Session config | `session_config.c` | ⚠ Stub | Phase 3 |
+| ESP-NOW (new) | `esp_now_manager.c` | ✅ Complete | Phase 2 |
+| Session config | `session_config.c` | ✅ Complete | Phase 3 |
 
 ### Key Architectural Changes
 
@@ -264,13 +264,15 @@ void esp_now_start_discovery(esp_now_manager_t* mgr);
 
 #### `session_config.h` / `session_config.c`
 
-**Status**: ⚠ **Stub implementation**
+**Status**: ✅ **Complete** (Phase 3)
 
-**TODO Phase 3**:
-- JSON configuration parsing
-- Topology generation (ring, small-world, clusters)
-- Preset configurations
-- Config distribution via ESP-NOW
+**Implemented**:
+- ✅ Binary configuration serialization/deserialization
+- ✅ Topology generators (ring, small-world, clusters, hub-spoke)
+- ✅ Preset configurations
+- ✅ Configuration chunking and distribution via ESP-NOW
+- ✅ CRC32 checksums for reliable transfer
+- ⏳ JSON parsing (deferred - requires cJSON library integration)
 
 **Python Equivalent**:
 ```python
@@ -283,12 +285,17 @@ params = NetworkParams(
 net = ModalNetwork(params, seed=42)
 ```
 
-ESP32 (planned):
+**ESP32 Implementation**:
 ```c
+// Hub: Generate and distribute configuration
 session_manager_t session;
-session_manager_init(&session, my_node_id);
-preset_ring_16_resonator(&session);
-session_apply_to_node(&session, &node);
+session_manager_init(&session, HUB_ID);
+preset_ring_16_resonator(&session);          // Or custom topology
+hub_send_config(&hub, &session.config);      // Broadcast to all nodes
+
+// Nodes: Receive and apply configuration
+// (Automatic via MSG_CFG_* message handlers)
+session_apply_to_node(&g_session, &g_node);  // Apply when complete
 ```
 
 ---
