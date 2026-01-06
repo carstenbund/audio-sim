@@ -31,6 +31,10 @@ class NetworkParams:
     gamma: np.ndarray = None
     coupling: float = 0.5
     drive_gain: np.ndarray = None
+
+    # Optional symmetry-breaking "pinning"
+    pin_node: int = 0
+    pin_strength: float = 0.0   # e.g. 0.02 means +2% extra damping on pin_node
     
     def __post_init__(self):
         if self.omega is None:
@@ -55,6 +59,8 @@ class NetworkParams:
             'gamma': self.gamma.copy(),
             'coupling': self.coupling,
             'drive_gain': self.drive_gain.copy(),
+            'pin_node': self.pin_node,
+            'pin_strength': self.pin_strength,
         }
         kwargs.update(overrides)
         return NetworkParams(**kwargs)
@@ -134,15 +140,20 @@ class ModalNetwork:
         for j in range(self.p.N):
             # Linear dynamics: damped oscillator
             linear = (-self.p.gamma + 1j * self.p.omega) * self.a[j]
-            
+
             # Coupling from neighbors
             coupling = self.coupling_input(j)
-            
+
             # External drive (real input couples into modes)
             ext = self.p.drive_gain * drive[j]
-            
+
+            # Optional symmetry-breaking: extra damping on one node
+            pin = 0.0
+            if self.p.pin_strength != 0.0 and j == self.p.pin_node:
+                pin = -self.p.pin_strength * self.a[j]  # proportional damping (complex OK)
+
             # Euler integration
-            a_new[j] = self.a[j] + self.p.dt * (linear + coupling + ext)
+            a_new[j] = self.a[j] + self.p.dt * (linear + coupling + ext + pin)
         
         self.a = a_new
         self.t += self.p.dt
@@ -326,3 +337,60 @@ class ModalNetwork:
             'q0': self.order_parameter_q0(mode),
             'qpi': self.order_parameter_qpi(mode)
         }
+
+    def order_parameter_q(self, q: float, mode: int = 0) -> float:
+        """
+        General spatial Fourier order parameter for wavenumber q.
+
+        S(q) = |⟨ a_j * exp(-i q j) ⟩|
+
+        Args:
+            q: Wavenumber (rad/site)
+            mode: Which temporal mode to measure (default 0)
+
+        Returns:
+            Magnitude of spatial Fourier component
+        """
+        j = np.arange(self.p.N)
+        return float(np.abs(np.mean(self.a[:, mode] * np.exp(-1j * q * j))))
+
+    def order_parameters_all(self, mode: int = 0) -> np.ndarray:
+        """
+        Spatial spectrum over all discrete wavenumbers q_m = 2π m / N.
+
+        Returns array S[m] for m=0..N-1.
+
+        Args:
+            mode: Which temporal mode to measure (default 0)
+
+        Returns:
+            Array of shape (N,) with spatial Fourier spectrum
+        """
+        S = np.zeros(self.p.N, dtype=np.float32)
+        for m in range(self.p.N):
+            q = 2 * np.pi * m / self.p.N
+            S[m] = self.order_parameter_q(q, mode=mode)
+        return S
+
+    def mode_energy(self) -> np.ndarray:
+        """
+        Energy per mode summed over nodes. Shape (K,).
+
+        Returns:
+            Array of shape (K,) with total energy in each mode
+        """
+        return np.sum(np.abs(self.a)**2, axis=0)
+
+    def mode_ratio(self, k0: int = 0, k1: int = 1) -> float:
+        """
+        Ratio E[k1] / (E[k0] + eps). Useful readout axis for K>=2.
+
+        Args:
+            k0: Reference mode (denominator)
+            k1: Comparison mode (numerator)
+
+        Returns:
+            Energy ratio between modes
+        """
+        e = self.mode_energy()
+        return float(e[k1] / (e[k0] + 1e-10))
