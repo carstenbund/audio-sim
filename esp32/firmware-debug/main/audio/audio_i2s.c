@@ -1,0 +1,154 @@
+/**
+ * @file audio_i2s.c
+ * @brief I2S audio output driver for 4-channel modal output
+ *
+ * Configures ESP32 I2S peripheral for:
+ * - 48kHz sample rate
+ * - 16-bit samples
+ * - 4-channel output (quad/TDM mode)
+ * - DMA buffers for low-latency
+ *
+ * Channel mapping:
+ * - Channel 0: Mode 0 output
+ * - Channel 1: Mode 1 output
+ * - Channel 2: Mode 2 output
+ * - Channel 3: Mode 3 output
+ *
+ * Hardware connections (TDM format):
+ * - GPIO 25: BCK (bit clock)
+ * - GPIO 26: WS (word select / LRCK)
+ * - GPIO 27: DIN (data in)
+ *
+ * Note: Requires TDM-capable DAC or multi-DAC configuration
+ */
+
+#include "audio_synth.h"
+#include "driver/i2s.h"
+#include "driver/gpio.h"
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+// ============================================================================
+// Configuration
+// ============================================================================
+
+#define TAG "AUDIO_I2S"
+
+// I2S peripheral
+#define I2S_NUM I2S_NUM_0
+
+// GPIO pins for I2S
+#define I2S_BCK_PIN     25  // Bit clock
+#define I2S_WS_PIN      26  // Word select (LRCK)
+#define I2S_DATA_PIN    27  // Data out
+
+// Buffer configuration
+#define DMA_BUF_COUNT   4
+#define DMA_BUF_LEN     480  // 10ms @ 48kHz per channel (1920 samples total for 4 channels)
+#define NUM_CHANNELS    4    // 4 channels (one per mode)
+
+// ============================================================================
+// I2S Initialization
+// ============================================================================
+
+void audio_i2s_init(void) {
+    ESP_LOGI(TAG, "Initializing I2S driver for 4-channel output");
+
+    // I2S configuration for 4-channel TDM mode
+    i2s_config_t i2s_config = {
+        .mode = I2S_MODE_MASTER | I2S_MODE_TX,
+        .sample_rate = SAMPLE_RATE,
+        .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
+        .channel_format = I2S_CHANNEL_FMT_MULTIPLE,  // Multi-channel mode
+        .communication_format = I2S_COMM_FORMAT_STAND_I2S,
+        .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
+        .dma_buf_count = DMA_BUF_COUNT,
+        .dma_buf_len = DMA_BUF_LEN * NUM_CHANNELS,  // 4x for 4 channels
+        .use_apll = true,  // Use APLL for better clock accuracy with multi-channel
+        .tx_desc_auto_clear = true,  // Auto-clear on underrun
+        .fixed_mclk = 0,
+        .mclk_multiple = I2S_MCLK_MULTIPLE_256,  // MCLK = 256 * sample_rate
+        .bits_cfg = {
+            .sample_bits = 16,
+            .slot_bits = 16,
+            .slot_mode = I2S_SLOT_MODE_QUAD  // 4-channel quad mode
+        }
+    };
+
+    // I2S pin configuration
+    i2s_pin_config_t pin_config = {
+        .bck_io_num = I2S_BCK_PIN,
+        .ws_io_num = I2S_WS_PIN,
+        .data_out_num = I2S_DATA_PIN,
+        .data_in_num = I2S_PIN_NO_CHANGE
+    };
+
+    // Install and configure I2S driver
+    esp_err_t err = i2s_driver_install(I2S_NUM, &i2s_config, 0, NULL);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to install I2S driver: %s", esp_err_to_name(err));
+        return;
+    }
+
+    err = i2s_set_pin(I2S_NUM, &pin_config);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set I2S pins: %s", esp_err_to_name(err));
+        return;
+    }
+
+    ESP_LOGI(TAG, "I2S driver initialized successfully");
+    ESP_LOGI(TAG, "  Sample rate: %d Hz", SAMPLE_RATE);
+    ESP_LOGI(TAG, "  Bits per sample: 16");
+    ESP_LOGI(TAG, "  Channels: %d (quad/TDM mode)", NUM_CHANNELS);
+    ESP_LOGI(TAG, "  DMA buffers: %d x %d samples (%d per channel)",
+             DMA_BUF_COUNT, DMA_BUF_LEN * NUM_CHANNELS, DMA_BUF_LEN);
+    ESP_LOGI(TAG, "  Mode 0 → Channel 0, Mode 1 → Channel 1");
+    ESP_LOGI(TAG, "  Mode 2 → Channel 2, Mode 3 → Channel 3");
+}
+
+// ============================================================================
+// I2S Write
+// ============================================================================
+
+size_t audio_i2s_write(const int16_t* buffer, size_t size) {
+    size_t bytes_written = 0;
+
+    esp_err_t err = i2s_write(I2S_NUM, buffer, size, &bytes_written, portMAX_DELAY);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "I2S write error: %s", esp_err_to_name(err));
+        return 0;
+    }
+
+    return bytes_written;
+}
+
+// ============================================================================
+// Audio Task
+// ============================================================================
+
+void audio_task(void* pvParameters) {
+    audio_synth_t* synth = (audio_synth_t*)pvParameters;
+
+    ESP_LOGI(TAG, "Audio task started on core %d", xPortGetCoreID());
+    ESP_LOGI(TAG, "Generating 48kHz audio");
+
+    // Wait a bit for system to stabilize
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    while (1) {
+        // Generate one buffer of audio (480 samples = 10ms)
+        int16_t* audio_buffer = audio_synth_generate_buffer(synth);
+
+        // Write to I2S (this blocks until DMA buffer is available)
+        size_t bytes_written = audio_i2s_write(audio_buffer, AUDIO_BUFFER_SIZE * sizeof(int16_t));
+
+        if (bytes_written == 0) {
+            ESP_LOGW(TAG, "I2S write failed, retrying...");
+            vTaskDelay(pdMS_TO_TICKS(1));
+        }
+
+        // No explicit delay needed - i2s_write blocks until buffer ready
+        // This gives us precise 48kHz timing
+    }
+}

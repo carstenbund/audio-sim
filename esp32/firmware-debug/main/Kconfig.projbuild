@@ -1,0 +1,129 @@
+# ESP32 Modal Resonator Configuration
+
+menu "Modal Network Configuration"
+
+    config MODAL_HUB_MODE
+        bool "Hub/Controller Mode"
+        default n
+        help
+            Enable hub/controller mode instead of regular node mode.
+
+            Hub mode provides:
+            - MIDI input handling
+            - Node discovery and registration
+            - Configuration distribution
+            - Session coordination
+
+            Regular node mode provides:
+            - 4-mode modal resonator
+            - Audio synthesis
+            - ESP-NOW network participation
+
+    config MODAL_NODE_ID
+        int "Node ID"
+        default 0
+        range 0 15
+        help
+            Node ID for this ESP32 (0-15).
+            Hub should be node 0.
+
+    config MODAL_DEFAULT_CARRIER_FREQ
+        int "Default Carrier Frequency (Hz)"
+        default 440
+        range 20 20000
+        help
+            Default audio carrier frequency in Hz.
+
+    config MODAL_USE_DEFAULT_CONFIG
+        bool "Use Default Configuration"
+        default y
+        help
+            Use built-in default configuration (ring topology, 4-mode resonators).
+            If disabled, configuration must be provided via network.
+
+endmenu
+
+menu "Debug and Testing Configuration"
+
+    config DEBUG_ENABLE
+        bool "Enable Debug Features"
+        default y
+        help
+            Enable debug test infrastructure and verbose logging.
+            This includes test harnesses, simulators, and debug utilities.
+
+    config DEBUG_TEST_PHASE
+        int "Test Phase (1-5)"
+        depends on DEBUG_ENABLE
+        default 1
+        range 1 5
+        help
+            Select which test phase to run:
+            1 = Single node syntax testing
+            2 = Two-node protocol testing
+            3 = Single node + audio testing
+            4 = Two-node + audio testing
+            5 = MIDI integration testing
+
+    config DEBUG_AUTO_RUN_TESTS
+        bool "Auto-run Tests on Boot"
+        depends on DEBUG_ENABLE
+        default y
+        help
+            Automatically run test phase on boot.
+            If disabled, tests must be triggered manually.
+
+    config DEBUG_VERBOSE_LOGGING
+        bool "Verbose Debug Logging"
+        depends on DEBUG_ENABLE
+        default y
+        help
+            Enable verbose debug logging including:
+            - Modal state monitoring
+            - Network statistics
+            - Audio synthesis details
+            - Task execution timing
+
+    config DEBUG_ENABLE_MIDI_SIMULATOR
+        bool "Enable MIDI Simulator"
+        depends on DEBUG_ENABLE
+        default n
+        help
+            Enable MIDI input simulator task.
+            Simulates MIDI note events without hardware.
+            Useful for Phase 5 testing without MIDI controller.
+
+    config DEBUG_ENABLE_HUB_SIMULATOR
+        bool "Enable Hub Simulator"
+        depends on DEBUG_ENABLE
+        default n
+        help
+            Enable simplified hub simulator task.
+            Provides basic hub functionality for single-node testing.
+            Useful for Phase 1 and 3 testing without separate hub node.
+
+    config DEBUG_POKE_INJECTION_ENABLED
+        bool "Enable Poke Injection Utilities"
+        depends on DEBUG_ENABLE
+        default y
+        help
+            Enable utilities for injecting test pokes.
+            Allows manual triggering of modal excitations for testing.
+
+    config DEBUG_NETWORK_TRAFFIC_GEN
+        bool "Enable Network Traffic Generator"
+        depends on DEBUG_ENABLE
+        default n
+        help
+            Enable network traffic generator for stress testing.
+            Generates synthetic ESP-NOW messages for testing reliability.
+
+    config DEBUG_MONITOR_TASK_ENABLED
+        bool "Enable Debug Monitor Task"
+        depends on DEBUG_ENABLE
+        default y
+        help
+            Enable background task that monitors and logs system state.
+            Prints modal amplitudes, network stats, and task timing.
+
+endmenu
