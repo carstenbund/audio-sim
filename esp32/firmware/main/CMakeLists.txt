@@ -10,10 +10,6 @@ idf_component_register(
         "network/protocol.c"
         "network/esp_now_manager.c"
         "config/session_config.c"
-        "config/topology.c"
-        "config/presets.c"
-        "utils/complex_math.c"
-        "utils/crc32.c"
 
     INCLUDE_DIRS
         "."
