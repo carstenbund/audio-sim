@@ -1,17 +1,21 @@
 /**
  * @file audio_synth.h
- * @brief 48kHz audio synthesis from modal state
+ * @brief 48kHz 4-channel audio synthesis from modal state
  *
  * Audio-first design:
  * - Runs independently at 48kHz regardless of network
- * - Modal state modulates audio parameters
+ * - Modal state directly drives audio output
  * - I2S DMA output for low-latency
+ * - 4-channel output (one channel per mode)
  *
- * Audio mapping:
- * - Mode 0: Carrier amplitude
- * - Mode 1: Detuning/beating
- * - Mode 2: Phase/timbre modulation
- * - Mode 3: Slow structural changes
+ * Channel mapping:
+ * - Channel 0: Mode 0 direct output
+ * - Channel 1: Mode 1 direct output
+ * - Channel 2: Mode 2 direct output
+ * - Channel 3: Mode 3 direct output
+ *
+ * Each mode synthesizes its own sinusoid at its frequency (omega[k]),
+ * with amplitude envelope from the mode's complex amplitude |a_k|.
  */
 
 #ifndef AUDIO_SYNTH_H
@@ -30,7 +34,9 @@ extern "C" {
 // ============================================================================
 
 #define SAMPLE_RATE 48000
-#define AUDIO_BUFFER_SIZE 480  // 10ms buffer @ 48kHz
+#define AUDIO_BUFFER_SAMPLES 480  // 10ms buffer @ 48kHz
+#define NUM_AUDIO_CHANNELS 4      // 4 channels (one per mode)
+#define AUDIO_BUFFER_SIZE (AUDIO_BUFFER_SAMPLES * NUM_AUDIO_CHANNELS)  // Total buffer size
 #define BITS_PER_SAMPLE 16
 
 // ============================================================================
@@ -41,11 +47,11 @@ extern "C" {
  * @brief Audio synthesis parameters
  */
 typedef struct {
-    float carrier_freq_hz;      ///< Base carrier frequency
-    float sample_rate;          ///< Sample rate (Hz)
-    uint32_t phase_accumulator; ///< Phase accumulator for oscillator
-    float master_gain;          ///< Master output gain [0,1]
-    bool muted;                 ///< Mute flag
+    float sample_rate;                    ///< Sample rate (Hz)
+    uint32_t phase_accumulator[MAX_MODES]; ///< Phase accumulators (one per mode)
+    float mode_gains[MAX_MODES];          ///< Per-mode gains [0,1]
+    float master_gain;                    ///< Master output gain [0,1]
+    bool muted;                           ///< Mute flag
 } audio_synth_params_t;
 
 /**
@@ -53,8 +59,9 @@ typedef struct {
  */
 typedef struct {
     audio_synth_params_t params;
-    int16_t buffer[AUDIO_BUFFER_SIZE];  ///< DMA buffer (stereo interleaved)
+    int16_t buffer[AUDIO_BUFFER_SIZE];  ///< DMA buffer (4-channel interleaved)
     const modal_node_t* node;           ///< Reference to modal node state
+    float amplitude_smooth[MAX_MODES];  ///< Smoothed amplitudes per mode
     bool initialized;
 } audio_synth_t;
 
@@ -67,11 +74,11 @@ typedef struct {
  *
  * @param synth Pointer to synthesis state
  * @param node Pointer to modal node (state source)
- * @param carrier_freq_hz Base carrier frequency
+ *
+ * Note: Frequencies are taken from mode parameters (omega[k])
  */
 void audio_synth_init(audio_synth_t* synth,
-                     const modal_node_t* node,
-                     float carrier_freq_hz);
+                     const modal_node_t* node);
 
 /**
  * @brief Generate one buffer of audio samples
@@ -85,12 +92,13 @@ void audio_synth_init(audio_synth_t* synth,
 int16_t* audio_synth_generate_buffer(audio_synth_t* synth);
 
 /**
- * @brief Set carrier frequency
+ * @brief Set per-mode gain
  *
  * @param synth Pointer to synthesis state
- * @param freq_hz Frequency in Hz
+ * @param mode_idx Mode index [0-3]
+ * @param gain Gain [0,1]
  */
-void audio_synth_set_frequency(audio_synth_t* synth, float freq_hz);
+void audio_synth_set_mode_gain(audio_synth_t* synth, int mode_idx, float gain);
 
 /**
  * @brief Set master gain

@@ -1,13 +1,15 @@
 /**
  * @file audio_synth.c
- * @brief 48kHz audio synthesis from modal state
+ * @brief 48kHz 4-channel audio synthesis from modal state
  *
- * Based on Python implementation in experiments/audio_sonification.py
- * Adapted for ESP32 with:
- * - Fixed-point phase accumulator for efficiency
- * - Fast sine approximation
+ * Each of the 4 modal oscillators drives its own audio channel:
+ * - Channel k synthesizes a sinusoid at frequency omega[k]
+ * - Amplitude envelope from |a_k(t)|
+ * - Independent phase accumulator per mode
  * - Amplitude smoothing to avoid clicks
- * - Direct mapping from modal state
+ *
+ * Output format: 4-channel interleaved TDM
+ * [ch0, ch1, ch2, ch3, ch0, ch1, ch2, ch3, ...]
  */
 
 #include "audio_synth.h"
@@ -62,16 +64,20 @@ float envelope_hann(float t) {
 // ============================================================================
 
 void audio_synth_init(audio_synth_t* synth,
-                     const modal_node_t* node,
-                     float carrier_freq_hz) {
+                     const modal_node_t* node) {
     memset(synth, 0, sizeof(audio_synth_t));
 
     synth->node = node;
-    synth->params.carrier_freq_hz = carrier_freq_hz;
     synth->params.sample_rate = SAMPLE_RATE;
-    synth->params.phase_accumulator = 0;
     synth->params.master_gain = 1.0f;
     synth->params.muted = false;
+
+    // Initialize per-mode parameters
+    for (int k = 0; k < MAX_MODES; k++) {
+        synth->params.phase_accumulator[k] = 0;
+        synth->params.mode_gains[k] = 1.0f;
+        synth->amplitude_smooth[k] = 0.0f;
+    }
 
     synth->initialized = true;
 }
@@ -93,48 +99,68 @@ int16_t* audio_synth_generate_buffer(audio_synth_t* synth) {
         return synth->buffer;
     }
 
-    // Get current modal state (thread-safe read, assumed atomic)
-    float amplitude_raw = modal_node_get_amplitude(synth->node);
-    float phase_mod = modal_node_get_phase_modulation(synth->node);
+    const modal_node_t* node = synth->node;
 
-    // Smooth amplitude to avoid clicks (exponential smoothing)
-    static float amplitude_smooth = 0.0f;
-    amplitude_smooth = amplitude_smooth + SMOOTH_ALPHA * (amplitude_raw - amplitude_smooth);
+    // Generate 4-channel interleaved audio
+    // Each mode k drives channel k
+    for (int sample_idx = 0; sample_idx < AUDIO_BUFFER_SAMPLES; sample_idx++) {
+        for (int k = 0; k < MAX_MODES; k++) {
+            // Skip inactive modes
+            if (!node->modes[k].params.active) {
+                synth->buffer[sample_idx * NUM_AUDIO_CHANNELS + k] = 0;
+                continue;
+            }
 
-    // Final amplitude with master gain
-    float amplitude = amplitude_smooth * synth->params.master_gain * MAX_AMPLITUDE_SCALE;
+            // Get mode amplitude (|a_k|)
+            float amplitude_raw = cabsf(node->modes[k].a);
 
-    // Clip to safe range
-    if (amplitude > MAX_AMPLITUDE_SCALE) {
-        amplitude = MAX_AMPLITUDE_SCALE;
+            // Apply mode weight
+            amplitude_raw *= node->modes[k].weight;
+
+            // Smooth amplitude to avoid clicks
+            synth->amplitude_smooth[k] +=
+                SMOOTH_ALPHA * (amplitude_raw - synth->amplitude_smooth[k]);
+
+            // Final amplitude with gains
+            float amplitude = synth->amplitude_smooth[k] *
+                            synth->params.mode_gains[k] *
+                            synth->params.master_gain *
+                            MAX_AMPLITUDE_SCALE;
+
+            // Clip to safe range
+            if (amplitude > MAX_AMPLITUDE_SCALE) {
+                amplitude = MAX_AMPLITUDE_SCALE;
+            }
+
+            // Get mode frequency (omega[k] in rad/s)
+            float omega = node->modes[k].params.omega;
+            float freq_hz = omega / (2.0f * M_PI);
+
+            // Phase increment
+            float phase_inc = 2.0f * M_PI * freq_hz / synth->params.sample_rate;
+
+            // Get phase from accumulator
+            uint32_t phase_acc = synth->params.phase_accumulator[k];
+            float phase = (phase_acc / 4294967296.0f) * 2.0f * M_PI;
+
+            // Get phase from complex amplitude (use arg(a_k) for phase coherence)
+            float mode_phase = cargf(node->modes[k].a);
+            phase += mode_phase;
+
+            // Generate sample with fast sine
+            float sample_f = amplitude * fast_sin(phase);
+
+            // Convert to 16-bit PCM
+            int16_t sample_i16 = (int16_t)(sample_f * 32767.0f);
+
+            // Write to interleaved buffer: [ch0, ch1, ch2, ch3, ch0, ch1, ...]
+            synth->buffer[sample_idx * NUM_AUDIO_CHANNELS + k] = sample_i16;
+
+            // Advance phase accumulator
+            phase_acc += (uint32_t)(phase_inc * 4294967296.0f / (2.0f * M_PI));
+            synth->params.phase_accumulator[k] = phase_acc;
+        }
     }
-
-    // Generate samples
-    float carrier_freq = synth->params.carrier_freq_hz;
-    float phase_inc = 2.0f * M_PI * carrier_freq / synth->params.sample_rate;
-
-    uint32_t phase_acc = synth->params.phase_accumulator;
-
-    for (int i = 0; i < AUDIO_BUFFER_SIZE; i++) {
-        // Phase accumulator (wraps automatically with uint32)
-        float phase = (phase_acc / 4294967296.0f) * 2.0f * M_PI;
-
-        // Add phase modulation from mode 2
-        phase += phase_mod;
-
-        // Generate carrier with fast sine
-        float sample = amplitude * fast_sin(phase);
-
-        // Convert to 16-bit PCM
-        int16_t sample_i16 = (int16_t)(sample * 32767.0f);
-        synth->buffer[i] = sample_i16;
-
-        // Advance phase (uint32 wraps automatically at 2π equivalent)
-        phase_acc += (uint32_t)(phase_inc * 4294967296.0f / (2.0f * M_PI));
-    }
-
-    // Store updated phase accumulator
-    synth->params.phase_accumulator = phase_acc;
 
     return synth->buffer;
 }
@@ -143,8 +169,13 @@ int16_t* audio_synth_generate_buffer(audio_synth_t* synth) {
 // Control Functions
 // ============================================================================
 
-void audio_synth_set_frequency(audio_synth_t* synth, float freq_hz) {
-    synth->params.carrier_freq_hz = freq_hz;
+void audio_synth_set_mode_gain(audio_synth_t* synth, int mode_idx, float gain) {
+    if (mode_idx < 0 || mode_idx >= MAX_MODES) return;
+
+    if (gain < 0.0f) gain = 0.0f;
+    if (gain > 1.0f) gain = 1.0f;
+
+    synth->params.mode_gains[mode_idx] = gain;
 }
 
 void audio_synth_set_gain(audio_synth_t* synth, float gain) {
@@ -156,5 +187,7 @@ void audio_synth_set_mute(audio_synth_t* synth, bool mute) {
 }
 
 void audio_synth_reset_phase(audio_synth_t* synth) {
-    synth->params.phase_accumulator = 0;
+    for (int k = 0; k < MAX_MODES; k++) {
+        synth->params.phase_accumulator[k] = 0;
+    }
 }
