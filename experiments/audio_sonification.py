@@ -24,7 +24,9 @@ import numpy as np
 import threading
 import time
 import sys
+import argparse
 from pathlib import Path
+from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -47,6 +49,12 @@ try:
     HAS_SCIPY = True
 except ImportError:
     HAS_SCIPY = False
+
+# Try to import MIDI support
+try:
+    from src.midi_input import MidiListener, HAS_MIDI
+except ImportError:
+    HAS_MIDI = False
 
 
 # ==========================
@@ -157,6 +165,89 @@ def simulation_loop(state: SharedState, params: NetworkParams, verbose: bool = T
         # Progress output
         if verbose and step_count % 1000 == 0:
             print(f"[{t:.2f}s] q0={q0:.3f}, qπ={qpi:.3f}")
+
+        t += params.dt
+        step_count += 1
+        time.sleep(params.dt)  # Real-time pacing
+
+    if verbose:
+        print(f"\n[{t:.2f}s] Simulation complete")
+    state.stop()
+
+
+def simulation_loop_midi(state: SharedState, params: NetworkParams,
+                        midi_listener: 'MidiListener', verbose: bool = True):
+    """
+    Real-time simulation loop with MIDI input.
+
+    MIDI Channels:
+    - Channel 1: Trigger notes → play notes on network nodes
+    - Channel 2: Drive notes → sustained drive at those frequencies
+    """
+    net = ModalNetwork(params, seed=42)
+    t = 0.0
+    step_count = 0
+
+    # Per-node state
+    freq = np.zeros(params.N, dtype=np.float32)
+    vel = np.zeros(params.N, dtype=np.float32)
+    note_off_time = np.full(params.N, -1.0)  # When notes should turn off
+    default_duration = 0.1  # Default note duration for triggers (100ms)
+
+    if verbose:
+        print("\n=== MIDI Modal Synth ===")
+        print(f"Channel 1: Trigger notes (play on nodes)")
+        print(f"Channel 2: Drive notes (sustain)")
+        print(f"Channels: {params.N}")
+        print("Waiting for MIDI input...\n")
+
+    while state.is_running():
+        # Process trigger notes (channel 1) - short note events
+        triggers = midi_listener.pop_triggers()
+        for trigger in triggers:
+            node = trigger.node
+            freq[node] = trigger.freq_hz
+            vel[node] = trigger.velocity
+            note_off_time[node] = t + default_duration
+            if verbose:
+                print(f"[{t:.2f}s] Trigger: Note {trigger.note} ({trigger.freq_hz:.1f}Hz) → node {node}")
+
+        # Process drive notes (channel 2) - sustained notes
+        drive_notes = midi_listener.get_drive_notes()
+
+        # Build drive array from channel 2 notes
+        drive = np.zeros(params.N, dtype=np.complex64)
+        if drive_notes:
+            for dn in drive_notes:
+                # Drive at the note's frequency (as phase rotation)
+                # This creates a standing wave at that frequency
+                drive[dn.node] = dn.velocity * np.exp(1j * 2 * np.pi * dn.freq_hz * t)
+        else:
+            # No drive notes - use default sustain nodes
+            sustain_nodes = [0, 1]
+            drive = make_drive(t, sustain_nodes, params.N)
+
+        # Turn off expired notes
+        expired = (note_off_time >= 0) & (t >= note_off_time)
+        if np.any(expired):
+            vel[expired] = 0.0
+            note_off_time[expired] = -1.0
+
+        # Step simulation
+        net.step(drive)
+
+        # Update audio state
+        state.update_node_audio(net.a[:, 0], freq, vel)
+
+        # Order parameters
+        q0 = net.order_parameter_q0(mode=0)
+        qpi = net.order_parameter_qpi(mode=0)
+        state.update_order_params(q0, qpi)
+
+        # Progress output
+        if verbose and step_count % 1000 == 0 and step_count > 0:
+            active = np.sum(vel > 0.01)
+            print(f"[{t:.2f}s] q0={q0:.3f}, qπ={qpi:.3f}, active_notes={active}")
 
         t += params.dt
         step_count += 1
@@ -388,17 +479,128 @@ def run_realtime_audio(params: NetworkParams):
         generate_wav_simulation(state, params)
 
 
+def run_midi_audio(params: NetworkParams, port_name: Optional[str] = None):
+    """Run real-time audio with MIDI input control."""
+
+    if not HAS_MIDI:
+        print("Error: MIDI support not available")
+        print("Install with: pip install mido python-rtmidi")
+        return
+
+    print("\n=== MIDI Modal Synth ===")
+    print(f"Sample rate: {AUDIO_FS} Hz")
+    print(f"Channels: {params.N}")
+    print("\nMIDI Routing:")
+    print("  - Channel 1: Trigger notes (play on nodes)")
+    print("  - Channel 2: Drive notes (sustained standing waves)")
+    print("\nHow it works:")
+    print("  - Each MIDI note → one network node (mod 8)")
+    print("  - Channel 1: Notes trigger brief events")
+    print("  - Channel 2: Notes drive sustained resonance")
+    print("  - Network amplitude shapes the sound\n")
+
+    # List available MIDI ports
+    print("Available MIDI ports:")
+    ports = MidiListener.list_ports()
+    for i, port in enumerate(ports):
+        print(f"  {i}: {port}")
+
+    if not ports:
+        print("No MIDI input ports available!")
+        return
+
+    # Check available audio devices
+    try:
+        devices = sd.query_devices()
+        print("\nAvailable audio devices:")
+        print(devices)
+        print()
+    except Exception as e:
+        print(f"Could not query audio devices: {e}")
+
+    # Initialize state and MIDI listener
+    state = SharedState(N=params.N)
+    midi_listener = MidiListener(num_nodes=params.N, port_name=port_name)
+
+    try:
+        # Start MIDI listener
+        midi_listener.start()
+
+        # Start simulation thread
+        sim_thread = threading.Thread(
+            target=simulation_loop_midi,
+            args=(state, params, midi_listener, True),
+            daemon=True
+        )
+        sim_thread.start()
+
+        # Start audio stream
+        callback = make_audio_callback_nodes(state, params.N)
+
+        with sd.OutputStream(
+            samplerate=AUDIO_FS,
+            channels=params.N,
+            callback=callback,
+            device=DEVICE_INDEX,
+            dtype='float32',
+        ):
+            print("▶ Audio stream started. Play MIDI notes!\n")
+            print("Press Ctrl+C to stop\n")
+
+            # Run until interrupted
+            try:
+                while True:
+                    time.sleep(0.1)
+            except KeyboardInterrupt:
+                print("\n\nStopping...")
+
+        print("\n✓ Audio stream complete")
+
+    except Exception as e:
+        print(f"\n✗ Error: {e}")
+        import traceback
+        traceback.print_exc()
+
+    finally:
+        state.stop()
+        midi_listener.stop()
+
+
 # ==========================
 # MAIN
 # ==========================
 def main():
     """Main entry point."""
 
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Modal Network Synthesizer")
+    parser.add_argument('--midi', action='store_true',
+                      help='Use MIDI input instead of CSV score')
+    parser.add_argument('--port', type=str, default=None,
+                      help='MIDI port name (auto-detect if not specified)')
+    parser.add_argument('--list-midi', action='store_true',
+                      help='List available MIDI ports and exit')
+    args = parser.parse_args()
+
+    # List MIDI ports if requested
+    if args.list_midi:
+        if HAS_MIDI:
+            print("Available MIDI ports:")
+            ports = MidiListener.list_ports()
+            for i, port in enumerate(ports):
+                print(f"  {i}: {port}")
+        else:
+            print("MIDI support not available. Install with: pip install mido python-rtmidi")
+        return
+
     print("=" * 70)
     print("MODAL SYNTH PLAYER")
     print("=" * 70)
     print("\nThis experiment uses the modal network as an 8-channel synthesizer.")
-    print("Each node is an audio output channel with score-driven pitch and velocity.")
+    if args.midi:
+        print("Mode: MIDI input (real-time performance)")
+    else:
+        print("Mode: CSV score playback")
 
     # Setup parameters
     params = NetworkParams(
@@ -410,6 +612,27 @@ def main():
         gamma=np.array([0.6, 0.6]),
     )
 
+    # MIDI mode
+    if args.midi:
+        if not HAS_MIDI:
+            print("\nError: MIDI support not available")
+            print("Install with: pip install mido python-rtmidi")
+            return
+
+        if HAS_AUDIO:
+            try:
+                sd.query_devices()
+                run_midi_audio(params, port_name=args.port)
+            except Exception as e:
+                print(f"\nError: {e}")
+                import traceback
+                traceback.print_exc()
+        else:
+            print("\nError: Audio output not available")
+            print("Install with: pip install sounddevice")
+        return
+
+    # CSV mode (original behavior)
     if HAS_AUDIO:
         # Check if audio device is actually available
         try:
