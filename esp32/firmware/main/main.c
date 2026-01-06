@@ -58,6 +58,17 @@ static session_manager_t g_session;
 
 static QueueHandle_t g_poke_queue;  // Queue for poke events
 
+// Configuration reception state
+static struct {
+    uint8_t buffer[4096];        // Configuration buffer
+    uint16_t total_size;         // Expected total size
+    uint8_t num_chunks;          // Expected number of chunks
+    uint8_t chunks_received;     // Chunks received so far
+    uint32_t expected_checksum;  // Expected CRC32
+    bool receiving;              // Currently receiving config
+    uint8_t chunk_bitmap[32];    // Bitmap of received chunks (max 256 chunks)
+} g_config_rx;
+
 // ============================================================================
 // Configuration (TODO: load from NVS or external config)
 // ============================================================================
@@ -177,12 +188,118 @@ static void on_network_message_received(const network_message_t* msg) {
             modal_node_reset(&g_node);
             break;
 
-        case MSG_CFG_BEGIN:
-        case MSG_CFG_CHUNK:
-        case MSG_CFG_END:
-            // TODO: Handle configuration messages (Phase 3)
-            ESP_LOGD(TAG, "Configuration messages not yet implemented");
+        case MSG_CFG_BEGIN: {
+            ESP_LOGI(TAG, "CFG_BEGIN: size=%d chunks=%d crc=0x%08X",
+                     msg->cfg_begin.total_size,
+                     msg->cfg_begin.num_chunks,
+                     msg->cfg_begin.checksum);
+
+            // Reset reception state
+            memset(&g_config_rx, 0, sizeof(g_config_rx));
+            g_config_rx.total_size = msg->cfg_begin.total_size;
+            g_config_rx.num_chunks = msg->cfg_begin.num_chunks;
+            g_config_rx.expected_checksum = msg->cfg_begin.checksum;
+            g_config_rx.receiving = true;
+
+            ESP_LOGI(TAG, "Ready to receive configuration");
             break;
+        }
+
+        case MSG_CFG_CHUNK: {
+            if (!g_config_rx.receiving) {
+                ESP_LOGW(TAG, "Received chunk without CFG_BEGIN");
+                break;
+            }
+
+            uint8_t chunk_idx = msg->cfg_chunk.chunk_idx;
+            uint8_t chunk_size = msg->cfg_chunk.chunk_size;
+
+            ESP_LOGD(TAG, "CFG_CHUNK: idx=%d size=%d", chunk_idx, chunk_size);
+
+            // Check if chunk already received (using bitmap)
+            uint8_t byte_idx = chunk_idx / 8;
+            uint8_t bit_idx = chunk_idx % 8;
+
+            if (g_config_rx.chunk_bitmap[byte_idx] & (1 << bit_idx)) {
+                ESP_LOGD(TAG, "Chunk %d already received, skipping", chunk_idx);
+                break;
+            }
+
+            // Copy chunk data
+            size_t offset = chunk_idx * 200;  // 200 bytes per chunk
+            if (offset + chunk_size <= sizeof(g_config_rx.buffer)) {
+                memcpy(g_config_rx.buffer + offset, msg->cfg_chunk.data, chunk_size);
+
+                // Mark chunk as received
+                g_config_rx.chunk_bitmap[byte_idx] |= (1 << bit_idx);
+                g_config_rx.chunks_received++;
+
+                ESP_LOGD(TAG, "Chunk %d received (%d/%d)",
+                         chunk_idx, g_config_rx.chunks_received, g_config_rx.num_chunks);
+            } else {
+                ESP_LOGE(TAG, "Chunk %d exceeds buffer size", chunk_idx);
+            }
+            break;
+        }
+
+        case MSG_CFG_END: {
+            if (!g_config_rx.receiving) {
+                ESP_LOGW(TAG, "Received CFG_END without CFG_BEGIN");
+                break;
+            }
+
+            ESP_LOGI(TAG, "CFG_END: received %d/%d chunks",
+                     g_config_rx.chunks_received, g_config_rx.num_chunks);
+
+            // Verify all chunks received
+            if (g_config_rx.chunks_received != g_config_rx.num_chunks) {
+                ESP_LOGE(TAG, "Missing chunks: %d/%d",
+                         g_config_rx.chunks_received, g_config_rx.num_chunks);
+                g_config_rx.receiving = false;
+
+                // Send NACK
+                network_message_t ack;
+                protocol_create_cfg_ack(&ack, MY_NODE_ID, msg->header.source_id, 1);
+                esp_now_send_message(&g_network, msg->header.source_id, &ack, sizeof(msg_cfg_ack_t));
+                break;
+            }
+
+            // Verify checksum
+            uint32_t actual_checksum = protocol_crc32(g_config_rx.buffer, g_config_rx.total_size);
+            if (actual_checksum != g_config_rx.expected_checksum) {
+                ESP_LOGE(TAG, "Checksum mismatch: expected 0x%08X, got 0x%08X",
+                         g_config_rx.expected_checksum, actual_checksum);
+                g_config_rx.receiving = false;
+
+                // Send NACK
+                network_message_t ack;
+                protocol_create_cfg_ack(&ack, MY_NODE_ID, msg->header.source_id, 2);
+                esp_now_send_message(&g_network, msg->header.source_id, &ack, sizeof(msg_cfg_ack_t));
+                break;
+            }
+
+            // Load configuration
+            if (session_load_config_binary(&g_session, g_config_rx.buffer, g_config_rx.total_size)) {
+                ESP_LOGI(TAG, "Configuration loaded successfully");
+
+                // Apply to node
+                if (session_apply_to_node(&g_session, &g_node)) {
+                    ESP_LOGI(TAG, "Configuration applied to modal node");
+
+                    // Send ACK
+                    network_message_t ack;
+                    protocol_create_cfg_ack(&ack, MY_NODE_ID, msg->header.source_id, 0);
+                    esp_now_send_message(&g_network, msg->header.source_id, &ack, sizeof(msg_cfg_ack_t));
+                } else {
+                    ESP_LOGE(TAG, "Failed to apply configuration");
+                }
+            } else {
+                ESP_LOGE(TAG, "Failed to load configuration");
+            }
+
+            g_config_rx.receiving = false;
+            break;
+        }
 
         default:
             ESP_LOGD(TAG, "Unhandled message type: 0x%02X", msg->header.type);

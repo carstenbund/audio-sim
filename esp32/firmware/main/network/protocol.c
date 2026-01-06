@@ -117,6 +117,91 @@ size_t protocol_create_heartbeat(network_message_t* msg,
 }
 
 // ============================================================================
+// Configuration Message Creators
+// ============================================================================
+
+size_t protocol_create_offer(network_message_t* msg,
+                             uint8_t source_id,
+                             const char* session_id,
+                             uint16_t config_size,
+                             uint8_t num_nodes) {
+    memset(msg, 0, sizeof(network_message_t));
+
+    protocol_init_header(&msg->offer.header, MSG_OFFER, source_id, 0xFF);
+    strncpy(msg->offer.session_id, session_id, 32);
+    msg->offer.config_size = config_size;
+    msg->offer.num_nodes = num_nodes;
+
+    return sizeof(msg_offer_t);
+}
+
+size_t protocol_create_join(network_message_t* msg,
+                            uint8_t source_id,
+                            uint8_t requested_node_id,
+                            const uint8_t* mac_address) {
+    memset(msg, 0, sizeof(network_message_t));
+
+    protocol_init_header(&msg->join.header, MSG_JOIN, source_id, 0xFF);
+    msg->join.requested_node_id = requested_node_id;
+    memcpy(msg->join.mac_address, mac_address, 6);
+
+    return sizeof(msg_join_t);
+}
+
+size_t protocol_create_cfg_begin(network_message_t* msg,
+                                 uint8_t source_id,
+                                 uint16_t total_size,
+                                 uint8_t num_chunks,
+                                 uint32_t checksum) {
+    memset(msg, 0, sizeof(network_message_t));
+
+    protocol_init_header(&msg->cfg_begin.header, MSG_CFG_BEGIN, source_id, 0xFF);
+    msg->cfg_begin.total_size = total_size;
+    msg->cfg_begin.num_chunks = num_chunks;
+    msg->cfg_begin.checksum = checksum;
+
+    return sizeof(msg_cfg_begin_t);
+}
+
+size_t protocol_create_cfg_chunk(network_message_t* msg,
+                                 uint8_t source_id,
+                                 uint8_t chunk_idx,
+                                 const uint8_t* data,
+                                 uint8_t data_size) {
+    memset(msg, 0, sizeof(network_message_t));
+
+    protocol_init_header(&msg->cfg_chunk.header, MSG_CFG_CHUNK, source_id, 0xFF);
+    msg->cfg_chunk.chunk_idx = chunk_idx;
+    msg->cfg_chunk.chunk_size = data_size;
+    memcpy(msg->cfg_chunk.data, data, data_size);
+
+    return sizeof(message_header_t) + 2 + data_size;  // header + idx + size + data
+}
+
+size_t protocol_create_cfg_end(network_message_t* msg,
+                               uint8_t source_id,
+                               uint32_t checksum) {
+    memset(msg, 0, sizeof(network_message_t));
+
+    protocol_init_header(&msg->cfg_end.header, MSG_CFG_END, source_id, 0xFF);
+    msg->cfg_end.checksum = checksum;
+
+    return sizeof(msg_cfg_end_t);
+}
+
+size_t protocol_create_cfg_ack(network_message_t* msg,
+                               uint8_t source_id,
+                               uint8_t dest_id,
+                               uint8_t status) {
+    memset(msg, 0, sizeof(network_message_t));
+
+    protocol_init_header(&msg->cfg_ack.header, MSG_CFG_ACK, source_id, dest_id);
+    msg->cfg_ack.status = status;
+
+    return sizeof(msg_cfg_ack_t);
+}
+
+// ============================================================================
 // Message Parsing
 // ============================================================================
 
@@ -143,6 +228,36 @@ bool protocol_parse_message(const uint8_t* data,
             memcpy(&msg->hello, data, sizeof(msg_hello_t));
             break;
 
+        case MSG_OFFER:
+            if (len < sizeof(msg_offer_t)) return false;
+            memcpy(&msg->offer, data, sizeof(msg_offer_t));
+            break;
+
+        case MSG_JOIN:
+            if (len < sizeof(msg_join_t)) return false;
+            memcpy(&msg->join, data, sizeof(msg_join_t));
+            break;
+
+        case MSG_CFG_BEGIN:
+            if (len < sizeof(msg_cfg_begin_t)) return false;
+            memcpy(&msg->cfg_begin, data, sizeof(msg_cfg_begin_t));
+            break;
+
+        case MSG_CFG_CHUNK:
+            if (len < sizeof(msg_cfg_chunk_t)) return false;
+            memcpy(&msg->cfg_chunk, data, sizeof(msg_cfg_chunk_t));
+            break;
+
+        case MSG_CFG_END:
+            if (len < sizeof(msg_cfg_end_t)) return false;
+            memcpy(&msg->cfg_end, data, sizeof(msg_cfg_end_t));
+            break;
+
+        case MSG_CFG_ACK:
+            if (len < sizeof(msg_cfg_ack_t)) return false;
+            memcpy(&msg->cfg_ack, data, sizeof(msg_cfg_ack_t));
+            break;
+
         case MSG_POKE:
             if (len < sizeof(msg_poke_t)) return false;
             memcpy(&msg->poke, data, sizeof(msg_poke_t));
@@ -161,21 +276,6 @@ bool protocol_parse_message(const uint8_t* data,
         case MSG_HEARTBEAT:
             if (len < sizeof(msg_heartbeat_t)) return false;
             memcpy(&msg->heartbeat, data, sizeof(msg_heartbeat_t));
-            break;
-
-        case MSG_CFG_BEGIN:
-            if (len < sizeof(msg_cfg_begin_t)) return false;
-            memcpy(&msg->cfg_begin, data, sizeof(msg_cfg_begin_t));
-            break;
-
-        case MSG_CFG_CHUNK:
-            if (len < sizeof(msg_cfg_chunk_t)) return false;
-            memcpy(&msg->cfg_chunk, data, sizeof(msg_cfg_chunk_t));
-            break;
-
-        case MSG_CFG_END:
-            if (len < sizeof(msg_cfg_end_t)) return false;
-            memcpy(&msg->cfg_end, data, sizeof(msg_cfg_end_t));
             break;
 
         default:

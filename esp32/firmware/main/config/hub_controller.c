@@ -8,10 +8,13 @@
  */
 
 #include "hub_controller.h"
+#include "session_config.h"
 #include "driver/uart.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include <string.h>
 #include <math.h>
 
@@ -219,26 +222,99 @@ uint8_t hub_get_num_registered(const hub_controller_t* hub) {
 bool hub_send_default_config(hub_controller_t* hub) {
     ESP_LOGI(TAG, "Sending default configuration to %d nodes", hub->num_registered);
 
-    // TODO: Generate default ring topology config
-    // For now, just mark as configured
+    // Generate default ring topology
+    session_manager_t session_mgr;
+    session_manager_init(&session_mgr, hub->hub_node_id);
 
+    // Use preset ring configuration
+    preset_ring_16_resonator(&session_mgr);
+
+    // Update to match actual number of registered nodes
+    if (hub->num_registered < 16) {
+        session_mgr.config.num_nodes = hub->num_registered;
+        topology_generate_ring(&session_mgr.config, hub->num_registered);
+    }
+
+    // Send this configuration to all nodes
+    return hub_send_config(hub, &session_mgr.config);
+}
+
+bool hub_send_config(hub_controller_t* hub, const session_config_t* config) {
+    if (!hub || !config) return false;
+
+    ESP_LOGI(TAG, "Sending configuration to %d nodes", hub->num_registered);
+
+    // Serialize configuration to binary
+    uint8_t config_buffer[4096];  // Max config size
+    session_manager_t temp_mgr;
+    memcpy(&temp_mgr.config, config, sizeof(session_config_t));
+
+    size_t config_size = session_serialize_config_binary(&temp_mgr,
+                                                         config_buffer,
+                                                         sizeof(config_buffer));
+
+    if (config_size == 0) {
+        ESP_LOGE(TAG, "Failed to serialize configuration");
+        return false;
+    }
+
+    ESP_LOGI(TAG, "Configuration size: %d bytes", config_size);
+
+    // Calculate number of chunks (200 bytes per chunk)
+    const uint8_t chunk_size = 200;
+    uint8_t num_chunks = (config_size + chunk_size - 1) / chunk_size;
+
+    ESP_LOGI(TAG, "Splitting into %d chunks", num_chunks);
+
+    // Calculate checksum
+    uint32_t checksum = protocol_crc32(config_buffer, config_size);
+
+    // Send CFG_BEGIN to all nodes
+    network_message_t msg;
+    protocol_create_cfg_begin(&msg, hub->hub_node_id, config_size, num_chunks, checksum);
+    esp_now_broadcast_message(&hub->network, &msg, sizeof(msg_cfg_begin_t));
+
+    ESP_LOGI(TAG, "Sent CFG_BEGIN (size=%d, chunks=%d, crc=0x%08X)",
+             config_size, num_chunks, checksum);
+
+    // Small delay between messages
+    vTaskDelay(pdMS_TO_TICKS(50));
+
+    // Send chunks
+    for (uint8_t i = 0; i < num_chunks; i++) {
+        size_t offset = i * chunk_size;
+        size_t this_chunk_size = (offset + chunk_size > config_size) ?
+                                 (config_size - offset) : chunk_size;
+
+        protocol_create_cfg_chunk(&msg, hub->hub_node_id, i,
+                                 config_buffer + offset, this_chunk_size);
+
+        size_t msg_size = sizeof(message_header_t) + 2 + this_chunk_size;
+        esp_now_broadcast_message(&hub->network, &msg, msg_size);
+
+        ESP_LOGD(TAG, "Sent chunk %d/%d (%d bytes)", i + 1, num_chunks, this_chunk_size);
+
+        // Small delay to avoid overwhelming nodes
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+
+    // Send CFG_END
+    protocol_create_cfg_end(&msg, hub->hub_node_id, checksum);
+    esp_now_broadcast_message(&hub->network, &msg, sizeof(msg_cfg_end_t));
+
+    ESP_LOGI(TAG, "Sent CFG_END");
+
+    // Wait for acknowledgments (simplified - just wait a bit)
+    vTaskDelay(pdMS_TO_TICKS(200));
+
+    // Mark all nodes as configured
     for (int i = 0; i < hub->num_registered; i++) {
         hub->nodes[i].configured = true;
     }
 
     hub->state = HUB_STATE_READY;
-    ESP_LOGI(TAG, "All nodes configured (using defaults)");
+    ESP_LOGI(TAG, "Configuration distribution complete");
 
-    return true;
-}
-
-bool hub_send_config(hub_controller_t* hub, const session_config_t* config) {
-    ESP_LOGI(TAG, "Sending custom configuration to %d nodes", hub->num_registered);
-
-    // TODO: Implement config chunking and distribution
-    // For Phase 3
-
-    hub->state = HUB_STATE_READY;
     return true;
 }
 

@@ -149,6 +149,18 @@ bool session_load_config_binary(session_manager_t* mgr,
                                size_t len);
 
 /**
+ * @brief Serialize configuration to binary blob
+ *
+ * @param mgr Pointer to session manager
+ * @param data Output buffer
+ * @param max_len Maximum buffer size
+ * @return Size of serialized data, or 0 on error
+ */
+size_t session_serialize_config_binary(const session_manager_t* mgr,
+                                       uint8_t* data,
+                                       size_t max_len);
+
+/**
  * @brief Get configuration for this node
  *
  * @param mgr Pointer to session manager

@@ -257,6 +257,129 @@ size_t protocol_create_poke(network_message_t* msg,
                            const float* mode_weights);
 
 /**
+ * @brief Create START message
+ *
+ * @param msg Pointer to message buffer
+ * @param source_id Source node ID
+ * @param start_time_ms Start time in ms
+ * @return Message size (bytes)
+ */
+size_t protocol_create_start(network_message_t* msg,
+                             uint8_t source_id,
+                             uint32_t start_time_ms);
+
+/**
+ * @brief Create STOP message
+ *
+ * @param msg Pointer to message buffer
+ * @param source_id Source node ID
+ * @return Message size (bytes)
+ */
+size_t protocol_create_stop(network_message_t* msg, uint8_t source_id);
+
+/**
+ * @brief Create HEARTBEAT message
+ *
+ * @param msg Pointer to message buffer
+ * @param source_id Source node ID
+ * @param uptime_ms Uptime in milliseconds
+ * @param cpu_usage CPU usage percentage
+ * @return Message size (bytes)
+ */
+size_t protocol_create_heartbeat(network_message_t* msg,
+                                 uint8_t source_id,
+                                 uint32_t uptime_ms,
+                                 uint8_t cpu_usage);
+
+/**
+ * @brief Create OFFER message
+ *
+ * @param msg Pointer to message buffer
+ * @param source_id Source node ID
+ * @param session_id Session identifier
+ * @param config_size Configuration size in bytes
+ * @param num_nodes Expected number of nodes
+ * @return Message size (bytes)
+ */
+size_t protocol_create_offer(network_message_t* msg,
+                             uint8_t source_id,
+                             const char* session_id,
+                             uint16_t config_size,
+                             uint8_t num_nodes);
+
+/**
+ * @brief Create JOIN message
+ *
+ * @param msg Pointer to message buffer
+ * @param source_id Source node ID
+ * @param requested_node_id Requested node ID (0xFF = auto)
+ * @param mac_address Node MAC address
+ * @return Message size (bytes)
+ */
+size_t protocol_create_join(network_message_t* msg,
+                            uint8_t source_id,
+                            uint8_t requested_node_id,
+                            const uint8_t* mac_address);
+
+/**
+ * @brief Create CFG_BEGIN message
+ *
+ * @param msg Pointer to message buffer
+ * @param source_id Source node ID
+ * @param total_size Total configuration size
+ * @param num_chunks Number of chunks
+ * @param checksum CRC32 checksum
+ * @return Message size (bytes)
+ */
+size_t protocol_create_cfg_begin(network_message_t* msg,
+                                 uint8_t source_id,
+                                 uint16_t total_size,
+                                 uint8_t num_chunks,
+                                 uint32_t checksum);
+
+/**
+ * @brief Create CFG_CHUNK message
+ *
+ * @param msg Pointer to message buffer
+ * @param source_id Source node ID
+ * @param chunk_idx Chunk index
+ * @param data Chunk data
+ * @param data_size Data size
+ * @return Message size (bytes)
+ */
+size_t protocol_create_cfg_chunk(network_message_t* msg,
+                                 uint8_t source_id,
+                                 uint8_t chunk_idx,
+                                 const uint8_t* data,
+                                 uint8_t data_size);
+
+/**
+ * @brief Create CFG_END message
+ *
+ * @param msg Pointer to message buffer
+ * @param source_id Source node ID
+ * @param checksum CRC32 checksum
+ * @return Message size (bytes)
+ */
+size_t protocol_create_cfg_end(network_message_t* msg,
+                               uint8_t source_id,
+                               uint32_t checksum);
+
+/**
+ * @brief Create CFG_ACK message
+ *
+ * @param msg Pointer to message buffer
+ * @param source_id Source node ID
+ * @param dest_id Destination node ID
+ * @param status Status code (0 = OK)
+ * @return Message size (bytes)
+ */
+size_t protocol_create_cfg_ack(network_message_t* msg,
+                               uint8_t source_id,
+                               uint8_t dest_id,
+                               uint8_t status);
+
+/**
  * @brief Parse received message
  *
  * @param data Raw message data
