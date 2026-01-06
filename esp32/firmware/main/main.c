@@ -108,6 +108,43 @@ static void on_network_message_received(const network_message_t* msg) {
              msg->header.type, msg->header.source_id);
 
     switch (msg->header.type) {
+        case MSG_HELLO: {
+            // Hub is discovering - respond with our HELLO
+            ESP_LOGI(TAG, "Received HELLO from hub, responding");
+
+            network_message_t response;
+            char node_name[16];
+            snprintf(node_name, sizeof(node_name), "Node_%03d", MY_NODE_ID);
+            protocol_create_hello(&response, MY_NODE_ID, node_name);
+
+            // Copy our MAC address
+            memcpy(response.hello.mac_address, g_network.my_mac, 6);
+
+            // Send response (use broadcast since hub may not be registered yet)
+            esp_now_broadcast_message(&g_network, &response, sizeof(msg_hello_t));
+
+            ESP_LOGI(TAG, "Sent HELLO response");
+            break;
+        }
+
+        case MSG_OFFER: {
+            // Hub is offering configuration
+            ESP_LOGI(TAG, "Received OFFER from hub (session: %s)", msg->offer.session_id);
+
+            // Accept the offer with JOIN
+            network_message_t join;
+            join.join.header.type = MSG_JOIN;
+            join.join.header.source_id = MY_NODE_ID;
+            join.join.header.dest_id = msg->header.source_id;
+            join.join.requested_node_id = MY_NODE_ID;
+            memcpy(join.join.mac_address, g_network.my_mac, 6);
+
+            esp_now_send_message(&g_network, msg->header.source_id, &join, sizeof(msg_join_t));
+
+            ESP_LOGI(TAG, "Sent JOIN to hub");
+            break;
+        }
+
         case MSG_POKE: {
             // Forward poke to control task
             poke_event_t poke = {
@@ -143,12 +180,12 @@ static void on_network_message_received(const network_message_t* msg) {
         case MSG_CFG_BEGIN:
         case MSG_CFG_CHUNK:
         case MSG_CFG_END:
-            // TODO: Handle configuration messages
-            ESP_LOGW(TAG, "Configuration messages not yet implemented");
+            // TODO: Handle configuration messages (Phase 3)
+            ESP_LOGD(TAG, "Configuration messages not yet implemented");
             break;
 
         default:
-            ESP_LOGW(TAG, "Unknown message type: 0x%02X", msg->header.type);
+            ESP_LOGD(TAG, "Unhandled message type: 0x%02X", msg->header.type);
             break;
     }
 }

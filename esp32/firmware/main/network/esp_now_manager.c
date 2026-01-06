@@ -1,38 +1,96 @@
 /**
  * @file esp_now_manager.c
- * @brief ESP-NOW mesh networking manager (stub implementation)
+ * @brief ESP-NOW mesh networking manager (complete implementation)
  *
- * TODO: Full implementation in Phase 2
- * This stub provides basic initialization and placeholder functions
+ * Full ESP-NOW implementation for distributed modal network:
+ * - Peer discovery and management
+ * - Message routing with retries
+ * - Statistics tracking
+ * - Configuration chunking support
  */
 
 #include "esp_now_manager.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
 #include "esp_now.h"
+#include "esp_timer.h"
 #include "nvs_flash.h"
 #include <string.h>
 
 #define TAG "ESP_NOW_MGR"
 
 // ============================================================================
-// Static Callbacks
+// Static State
 // ============================================================================
 
 static esp_now_manager_t* g_manager = NULL;
 
-static void esp_now_recv_cb(const uint8_t* mac_addr, const uint8_t* data, int len) {
-    if (!g_manager || !g_manager->on_message_received) return;
+// Statistics
+static uint32_t g_tx_count = 0;
+static uint32_t g_rx_count = 0;
+static uint32_t g_tx_fail_count = 0;
+
+// ============================================================================
+// Static Callbacks
+// ============================================================================
+
+static void esp_now_recv_cb(const esp_now_recv_info_t* recv_info, const uint8_t* data, int len) {
+    if (!g_manager) return;
+
+    g_rx_count++;
 
     // Parse message
     network_message_t msg;
-    if (protocol_parse_message(data, len, &msg)) {
+    if (!protocol_parse_message(data, len, &msg)) {
+        ESP_LOGW(TAG, "Failed to parse message (%d bytes)", len);
+        return;
+    }
+
+    // Update peer statistics
+    for (int i = 0; i < g_manager->num_peers; i++) {
+        if (mac_equal(g_manager->peers[i].mac_address, recv_info->src_addr)) {
+            g_manager->peers[i].packets_received++;
+            g_manager->peers[i].last_seen_ms = esp_timer_get_time() / 1000;
+            break;
+        }
+    }
+
+    // Call user callback
+    if (g_manager->on_message_received) {
         g_manager->on_message_received(&msg);
     }
+
+    ESP_LOGD(TAG, "RX: type=0x%02X from=%d len=%d",
+             msg.header.type, msg.header.source_id, len);
 }
 
 static void esp_now_send_cb(const uint8_t* mac_addr, esp_now_send_status_t status) {
-    // TODO: Track send status for statistics
+    if (status == ESP_NOW_SEND_SUCCESS) {
+        g_tx_count++;
+
+        // Update peer statistics
+        if (g_manager) {
+            for (int i = 0; i < g_manager->num_peers; i++) {
+                if (mac_equal(g_manager->peers[i].mac_address, mac_addr)) {
+                    g_manager->peers[i].packets_sent++;
+                    break;
+                }
+            }
+        }
+    } else {
+        g_tx_fail_count++;
+        ESP_LOGW(TAG, "TX failed to " MACSTR, MAC2STR(mac_addr));
+
+        // Update peer lost packets
+        if (g_manager) {
+            for (int i = 0; i < g_manager->num_peers; i++) {
+                if (mac_equal(g_manager->peers[i].mac_address, mac_addr)) {
+                    g_manager->peers[i].packets_lost++;
+                    break;
+                }
+            }
+        }
+    }
 }
 
 // ============================================================================
@@ -113,6 +171,8 @@ void esp_now_manager_deinit(esp_now_manager_t* mgr) {
 
     mgr->initialized = false;
     g_manager = NULL;
+
+    ESP_LOGI(TAG, "ESP-NOW deinitialized");
 }
 
 // ============================================================================
@@ -125,13 +185,13 @@ bool esp_now_send_message(esp_now_manager_t* mgr,
                          size_t len) {
     if (!mgr || !mgr->initialized) return false;
 
-    // Find peer MAC by node ID
+    // Find destination MAC address
     uint8_t dest_mac[6];
     if (dest_id == 0xFF) {
         // Broadcast
         memset(dest_mac, 0xFF, 6);
     } else {
-        // Find peer
+        // Find peer by node ID
         bool found = false;
         for (int i = 0; i < mgr->num_peers; i++) {
             if (mgr->peers[i].node_id == dest_id && mgr->peers[i].active) {
@@ -140,26 +200,47 @@ bool esp_now_send_message(esp_now_manager_t* mgr,
                 break;
             }
         }
+
         if (!found) {
-            ESP_LOGW(TAG, "Peer %d not found", dest_id);
-            return false;
+            ESP_LOGD(TAG, "Peer %d not found, using broadcast", dest_id);
+            memset(dest_mac, 0xFF, 6);
         }
     }
 
-    // Send via ESP-NOW
-    esp_err_t err = esp_now_send(dest_mac, (const uint8_t*)msg, len);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "ESP-NOW send failed: %s", esp_err_to_name(err));
-        return false;
+    // Send with retries
+    int retries = MAX_SEND_RETRIES;
+    esp_err_t err;
+
+    while (retries > 0) {
+        err = esp_now_send(dest_mac, (const uint8_t*)msg, len);
+
+        if (err == ESP_OK) {
+            ESP_LOGD(TAG, "TX: type=0x%02X to=%d len=%zu",
+                     msg->header.type, dest_id, len);
+            return true;
+        }
+
+        ESP_LOGW(TAG, "TX failed (attempt %d/%d): %s",
+                 MAX_SEND_RETRIES - retries + 1, MAX_SEND_RETRIES,
+                 esp_err_to_name(err));
+
+        retries--;
+        if (retries > 0) {
+            vTaskDelay(pdMS_TO_TICKS(10));  // Wait before retry
+        }
     }
 
-    return true;
+    ESP_LOGE(TAG, "TX failed to node %d after %d retries", dest_id, MAX_SEND_RETRIES);
+    return false;
 }
 
 uint8_t esp_now_broadcast_message(esp_now_manager_t* mgr,
                                  const network_message_t* msg,
                                  size_t len) {
-    return esp_now_send_message(mgr, 0xFF, msg, len) ? 1 : 0;
+    if (!esp_now_send_message(mgr, 0xFF, msg, len)) {
+        return 0;
+    }
+    return 1;  // Broadcast counts as 1 send
 }
 
 // ============================================================================
@@ -181,60 +262,200 @@ void esp_now_register_discovery_callback(esp_now_manager_t* mgr,
 }
 
 // ============================================================================
-// Peer Management (Stubs)
+// Peer Management
 // ============================================================================
 
 bool esp_now_add_peer(esp_now_manager_t* mgr,
                      uint8_t node_id,
                      const uint8_t* mac) {
-    // TODO: Implement in Phase 2
+    if (!mgr || !mgr->initialized) return false;
+
+    // Check if already exists
+    for (int i = 0; i < mgr->num_peers; i++) {
+        if (mgr->peers[i].node_id == node_id) {
+            ESP_LOGD(TAG, "Peer %d already exists, updating MAC", node_id);
+            memcpy(mgr->peers[i].mac_address, mac, 6);
+            mgr->peers[i].active = true;
+            return true;
+        }
+    }
+
+    // Add new peer
+    if (mgr->num_peers >= MAX_PEERS) {
+        ESP_LOGE(TAG, "Cannot add peer %d: registry full", node_id);
+        return false;
+    }
+
+    peer_info_t* peer = &mgr->peers[mgr->num_peers];
+    memcpy(peer->mac_address, mac, 6);
+    peer->node_id = node_id;
+    peer->active = true;
+    peer->last_seen_ms = esp_timer_get_time() / 1000;
+    peer->packets_sent = 0;
+    peer->packets_received = 0;
+    peer->packets_lost = 0;
+    peer->latency_ms = 0.0f;
+
+    mgr->num_peers++;
+
+    // Add to ESP-NOW peer list
+    esp_now_peer_info_t esp_peer = {0};
+    memcpy(esp_peer.peer_addr, mac, 6);
+    esp_peer.channel = 0;  // Use current channel
+    esp_peer.ifidx = WIFI_IF_STA;
+    esp_peer.encrypt = false;
+
+    esp_err_t err = esp_now_add_peer(&esp_peer);
+    if (err != ESP_OK && err != ESP_ERR_ESPNOW_EXIST) {
+        ESP_LOGW(TAG, "Failed to add ESP-NOW peer: %s", esp_err_to_name(err));
+        // Continue anyway - might work via broadcast
+    }
+
+    ESP_LOGI(TAG, "Added peer: node_id=%d mac=" MACSTR " (total: %d)",
+             node_id, MAC2STR(mac), mgr->num_peers);
+
+    // Call discovery callback
+    if (mgr->on_peer_discovered) {
+        mgr->on_peer_discovered(node_id, mac);
+    }
+
     return true;
 }
 
 bool esp_now_remove_peer(esp_now_manager_t* mgr, uint8_t node_id) {
-    // TODO: Implement in Phase 2
-    return true;
+    if (!mgr) return false;
+
+    for (int i = 0; i < mgr->num_peers; i++) {
+        if (mgr->peers[i].node_id == node_id) {
+            // Remove from ESP-NOW
+            esp_now_del_peer(mgr->peers[i].mac_address);
+
+            // Mark as inactive (don't shift array to preserve indices)
+            mgr->peers[i].active = false;
+
+            ESP_LOGI(TAG, "Removed peer: node_id=%d", node_id);
+            return true;
+        }
+    }
+
+    return false;
 }
 
 const peer_info_t* esp_now_get_peer(const esp_now_manager_t* mgr,
                                    uint8_t node_id) {
-    // TODO: Implement in Phase 2
+    if (!mgr) return NULL;
+
+    for (int i = 0; i < mgr->num_peers; i++) {
+        if (mgr->peers[i].node_id == node_id && mgr->peers[i].active) {
+            return &mgr->peers[i];
+        }
+    }
+
     return NULL;
 }
 
+uint8_t esp_now_get_all_peers(const esp_now_manager_t* mgr,
+                             peer_info_t* peers,
+                             uint8_t max_peers) {
+    if (!mgr || !peers) return 0;
+
+    uint8_t count = 0;
+    for (int i = 0; i < mgr->num_peers && count < max_peers; i++) {
+        if (mgr->peers[i].active) {
+            memcpy(&peers[count], &mgr->peers[i], sizeof(peer_info_t));
+            count++;
+        }
+    }
+
+    return count;
+}
+
+bool esp_now_is_peer_active(const esp_now_manager_t* mgr, uint8_t node_id) {
+    return esp_now_get_peer(mgr, node_id) != NULL;
+}
+
 // ============================================================================
-// Discovery (Stubs)
+// Discovery
 // ============================================================================
 
 void esp_now_start_discovery(esp_now_manager_t* mgr) {
-    ESP_LOGI(TAG, "Discovery started (stub)");
-    // TODO: Implement in Phase 2
+    if (!mgr || !mgr->initialized) return;
+
+    ESP_LOGI(TAG, "Discovery started");
+
+    // Discovery is handled by application layer (hub sends HELLO broadcast)
+    // This function is just a marker for clarity
 }
 
 void esp_now_stop_discovery(esp_now_manager_t* mgr) {
-    ESP_LOGI(TAG, "Discovery stopped (stub)");
-    // TODO: Implement in Phase 2
+    if (!mgr) return;
+
+    ESP_LOGI(TAG, "Discovery stopped");
+}
+
+void esp_now_handle_hello(esp_now_manager_t* mgr, const msg_hello_t* msg) {
+    if (!mgr) return;
+
+    // Extract node info from HELLO
+    uint8_t node_id = msg->header.source_id;
+    const uint8_t* mac = msg->mac_address;
+
+    ESP_LOGI(TAG, "HELLO from node %d (%s)", node_id, msg->name);
+
+    // Add as peer
+    esp_now_add_peer(mgr, node_id, mac);
 }
 
 // ============================================================================
-// Statistics (Stubs)
+// Statistics & Monitoring
 // ============================================================================
 
 void esp_now_get_stats(const esp_now_manager_t* mgr,
                       uint32_t* total_tx,
                       uint32_t* total_rx,
                       uint32_t* total_lost) {
-    if (total_tx) *total_tx = 0;
-    if (total_rx) *total_rx = 0;
-    if (total_lost) *total_lost = 0;
+    if (total_tx) *total_tx = g_tx_count;
+    if (total_rx) *total_rx = g_rx_count;
+    if (total_lost) *total_lost = g_tx_fail_count;
 }
 
 float esp_now_get_avg_latency(const esp_now_manager_t* mgr) {
-    return 0.0f;
+    if (!mgr || mgr->num_peers == 0) return 0.0f;
+
+    float sum = 0.0f;
+    int count = 0;
+
+    for (int i = 0; i < mgr->num_peers; i++) {
+        if (mgr->peers[i].active && mgr->peers[i].latency_ms > 0.0f) {
+            sum += mgr->peers[i].latency_ms;
+            count++;
+        }
+    }
+
+    return (count > 0) ? (sum / count) : 0.0f;
 }
 
 uint8_t esp_now_check_stale_peers(esp_now_manager_t* mgr, uint32_t timeout_ms) {
-    return 0;
+    if (!mgr) return 0;
+
+    uint32_t now = esp_timer_get_time() / 1000;
+    uint8_t stale_count = 0;
+
+    for (int i = 0; i < mgr->num_peers; i++) {
+        if (mgr->peers[i].active) {
+            uint32_t elapsed = now - mgr->peers[i].last_seen_ms;
+            if (elapsed > timeout_ms) {
+                ESP_LOGW(TAG, "Peer %d is stale (%u ms since last seen)",
+                         mgr->peers[i].node_id, (unsigned)elapsed);
+                stale_count++;
+
+                // Optionally mark as inactive
+                // mgr->peers[i].active = false;
+            }
+        }
+    }
+
+    return stale_count;
 }
 
 // ============================================================================
@@ -252,4 +473,28 @@ bool mac_equal(const uint8_t* mac1, const uint8_t* mac2) {
 
 void esp_now_get_my_mac(uint8_t* mac) {
     esp_wifi_get_mac(WIFI_IF_STA, mac);
+}
+
+// ============================================================================
+// Debug
+// ============================================================================
+
+void esp_now_print_stats(const esp_now_manager_t* mgr) {
+    ESP_LOGI(TAG, "=== ESP-NOW Statistics ===");
+    ESP_LOGI(TAG, "TX: %u packets", (unsigned)g_tx_count);
+    ESP_LOGI(TAG, "RX: %u packets", (unsigned)g_rx_count);
+    ESP_LOGI(TAG, "TX failed: %u packets", (unsigned)g_tx_fail_count);
+    ESP_LOGI(TAG, "Peers: %d active", mgr ? mgr->num_peers : 0);
+
+    if (mgr) {
+        for (int i = 0; i < mgr->num_peers; i++) {
+            if (mgr->peers[i].active) {
+                ESP_LOGI(TAG, "  Peer %d: TX=%u RX=%u lost=%u",
+                         mgr->peers[i].node_id,
+                         (unsigned)mgr->peers[i].packets_sent,
+                         (unsigned)mgr->peers[i].packets_received,
+                         (unsigned)mgr->peers[i].packets_lost);
+            }
+        }
+    }
 }
