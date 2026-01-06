@@ -1,0 +1,45 @@
+# ESP-IDF Build System
+build/
+sdkconfig
+sdkconfig.old
+*.bin
+*.elf
+*.map
+
+# Compilation artifacts
+*.o
+*.a
+*.so
+*.d
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+serial_*.txt
+
+# Test artifacts
+test_results/
+coverage/
+
+# Hardware
+*.bak
+*.kicad_pcb-bak
+*.sch-bak
+
+# Configuration backups
+*.json.bak
+*.yaml.bak
