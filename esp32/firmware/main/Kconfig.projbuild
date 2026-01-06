@@ -1,0 +1,44 @@
+# ESP32 Modal Resonator Configuration
+
+menu "Modal Network Configuration"
+
+    config MODAL_HUB_MODE
+        bool "Hub/Controller Mode"
+        default n
+        help
+            Enable hub/controller mode instead of regular node mode.
+
+            Hub mode provides:
+            - MIDI input handling
+            - Node discovery and registration
+            - Configuration distribution
+            - Session coordination
+
+            Regular node mode provides:
+            - 4-mode modal resonator
+            - Audio synthesis
+            - ESP-NOW network participation
+
+    config MODAL_NODE_ID
+        int "Node ID"
+        default 0
+        range 0 15
+        help
+            Node ID for this ESP32 (0-15).
+            Hub should be node 0.
+
+    config MODAL_DEFAULT_CARRIER_FREQ
+        int "Default Carrier Frequency (Hz)"
+        default 440
+        range 20 20000
+        help
+            Default audio carrier frequency in Hz.
+
+    config MODAL_USE_DEFAULT_CONFIG
+        bool "Use Default Configuration"
+        default y
+        help
+            Use built-in default configuration (ring topology, 4-mode resonators).
+            If disabled, configuration must be provided via network.
+
+endmenu
