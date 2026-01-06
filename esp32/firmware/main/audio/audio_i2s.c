@@ -1,17 +1,25 @@
 /**
  * @file audio_i2s.c
- * @brief I2S audio output driver for PCM5102A DAC
+ * @brief I2S audio output driver for 4-channel modal output
  *
  * Configures ESP32 I2S peripheral for:
  * - 48kHz sample rate
  * - 16-bit samples
- * - Mono output (left channel)
+ * - 4-channel output (quad/TDM mode)
  * - DMA buffers for low-latency
  *
- * Hardware connections:
+ * Channel mapping:
+ * - Channel 0: Mode 0 output
+ * - Channel 1: Mode 1 output
+ * - Channel 2: Mode 2 output
+ * - Channel 3: Mode 3 output
+ *
+ * Hardware connections (TDM format):
  * - GPIO 25: BCK (bit clock)
  * - GPIO 26: WS (word select / LRCK)
  * - GPIO 27: DIN (data in)
+ *
+ * Note: Requires TDM-capable DAC or multi-DAC configuration
  */
 
 #include "audio_synth.h"
@@ -37,28 +45,35 @@
 
 // Buffer configuration
 #define DMA_BUF_COUNT   4
-#define DMA_BUF_LEN     480  // 10ms @ 48kHz
+#define DMA_BUF_LEN     480  // 10ms @ 48kHz per channel (1920 samples total for 4 channels)
+#define NUM_CHANNELS    4    // 4 channels (one per mode)
 
 // ============================================================================
 // I2S Initialization
 // ============================================================================
 
 void audio_i2s_init(void) {
-    ESP_LOGI(TAG, "Initializing I2S driver");
+    ESP_LOGI(TAG, "Initializing I2S driver for 4-channel output");
 
-    // I2S configuration
+    // I2S configuration for 4-channel TDM mode
     i2s_config_t i2s_config = {
         .mode = I2S_MODE_MASTER | I2S_MODE_TX,
         .sample_rate = SAMPLE_RATE,
         .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
-        .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,  // Mono on left channel
+        .channel_format = I2S_CHANNEL_FMT_MULTIPLE,  // Multi-channel mode
         .communication_format = I2S_COMM_FORMAT_STAND_I2S,
         .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
         .dma_buf_count = DMA_BUF_COUNT,
-        .dma_buf_len = DMA_BUF_LEN,
-        .use_apll = false,  // Use PLL (more accurate timing)
+        .dma_buf_len = DMA_BUF_LEN * NUM_CHANNELS,  // 4x for 4 channels
+        .use_apll = true,  // Use APLL for better clock accuracy with multi-channel
         .tx_desc_auto_clear = true,  // Auto-clear on underrun
-        .fixed_mclk = 0
+        .fixed_mclk = 0,
+        .mclk_multiple = I2S_MCLK_MULTIPLE_256,  // MCLK = 256 * sample_rate
+        .bits_cfg = {
+            .sample_bits = 16,
+            .slot_bits = 16,
+            .slot_mode = I2S_SLOT_MODE_QUAD  // 4-channel quad mode
+        }
     };
 
     // I2S pin configuration
@@ -82,14 +97,14 @@ void audio_i2s_init(void) {
         return;
     }
 
-    // Set clock (ensure exact 48kHz)
-    i2s_set_clk(I2S_NUM, SAMPLE_RATE, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_MONO);
-
     ESP_LOGI(TAG, "I2S driver initialized successfully");
     ESP_LOGI(TAG, "  Sample rate: %d Hz", SAMPLE_RATE);
     ESP_LOGI(TAG, "  Bits per sample: 16");
-    ESP_LOGI(TAG, "  Channel: Mono (left)");
-    ESP_LOGI(TAG, "  DMA buffers: %d x %d samples", DMA_BUF_COUNT, DMA_BUF_LEN);
+    ESP_LOGI(TAG, "  Channels: %d (quad/TDM mode)", NUM_CHANNELS);
+    ESP_LOGI(TAG, "  DMA buffers: %d x %d samples (%d per channel)",
+             DMA_BUF_COUNT, DMA_BUF_LEN * NUM_CHANNELS, DMA_BUF_LEN);
+    ESP_LOGI(TAG, "  Mode 0 → Channel 0, Mode 1 → Channel 1");
+    ESP_LOGI(TAG, "  Mode 2 → Channel 2, Mode 3 → Channel 3");
 }
 
 // ============================================================================

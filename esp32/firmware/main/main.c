@@ -380,11 +380,10 @@ static void system_init(void) {
     modal_node_set_mode(&g_node, 2, freq_to_omega(880.0f), 1.0f, 0.3f);  // Mode 2: timbre
     modal_node_set_mode(&g_node, 3, freq_to_omega(55.0f), 0.1f, 0.5f);   // Mode 3: sub
 
-    g_node.carrier_freq_hz = DEFAULT_CARRIER_FREQ;
     g_node.audio_gain = 0.7f;
 
-    // Initialize audio synthesis
-    audio_synth_init(&g_audio, &g_node, DEFAULT_CARRIER_FREQ);
+    // Initialize audio synthesis (frequencies come from mode parameters)
+    audio_synth_init(&g_audio, &g_node);
     audio_i2s_init();
 
     // Initialize session manager
