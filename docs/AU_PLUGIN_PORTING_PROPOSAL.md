@@ -316,9 +316,10 @@ enum {
 
 ## 3. Implementation Phases
 
-### Phase 1: Core DSP Port (2-3 weeks)
+### Phase 1: Core DSP Port
 
 **Goal:** Single-voice modal oscillator working in standalone test app
+**Priority:** Critical - Foundation for all subsequent work
 
 **Tasks:**
 1. ✅ Port `modal_node.c/.h` to macOS (remove FreeRTOS)
@@ -342,9 +343,11 @@ enum {
 
 ---
 
-### Phase 2: Audio Unit Shell (2 weeks)
+### Phase 2: Audio Unit Shell
 
 **Goal:** Basic AU plugin loads in Logic, responds to MIDI
+**Priority:** Critical - Enables testing in target environment
+**Dependencies:** Phase 1 complete
 
 **Tasks:**
 1. ✅ Create Xcode AU project (v2 instrument)
@@ -369,9 +372,11 @@ enum {
 
 ---
 
-### Phase 3: Voice Coupling & Topologies (2-3 weeks)
+### Phase 3: Voice Coupling & Topologies
 
 **Goal:** Multi-voice coupling system with topology presets
+**Priority:** High - Core unique feature
+**Dependencies:** Phase 2 complete
 
 **Tasks:**
 1. ✅ Implement coupling matrix system
@@ -395,9 +400,11 @@ enum {
 
 ---
 
-### Phase 4: Preset System & GUI (3 weeks)
+### Phase 4: Preset System & GUI
 
 **Goal:** Professional preset management and native macOS interface
+**Priority:** Medium - Enhances usability
+**Dependencies:** Phase 3 complete (can partially overlap)
 
 **Tasks:**
 1. ✅ AU preset serialization (plist format)
@@ -422,9 +429,11 @@ enum {
 
 ---
 
-### Phase 5: Optimization & Polish (2 weeks)
+### Phase 5: Optimization & Polish
 
 **Goal:** Production-ready performance and stability
+**Priority:** High - Required for release
+**Dependencies:** Phases 2-4 complete
 
 **Tasks:**
 1. ✅ SIMD optimization (vDSP, Accelerate framework)
@@ -449,9 +458,11 @@ enum {
 
 ---
 
-### Phase 6: Release & Distribution (1 week)
+### Phase 6: Release & Distribution
 
 **Goal:** Public release with documentation
+**Priority:** Medium - Packaging and distribution
+**Dependencies:** Phase 5 complete
 
 **Tasks:**
 1. ✅ Code signing & notarization (Apple)
@@ -679,23 +690,19 @@ ModalAttractorsAU/
    - C/C++ expertise
    - Real-time audio experience
    - Apple Accelerate framework knowledge
+   - Experience with modal synthesis and coupled oscillator systems
 
 2. **Objective-C Developer** (Mid-Senior)
    - AU SDK experience (critical)
    - Cocoa/AppKit GUI development
    - macOS audio plugin lifecycle
+   - Core Audio framework expertise
 
 3. **QA/Tester** (Junior-Mid)
    - Logic Pro X power user
    - MIDI controller experience
    - Bug reporting & regression testing
-
-**Estimated Effort:**
-- Senior DSP Engineer: 8-10 weeks full-time
-- Objective-C Developer: 6-8 weeks full-time
-- QA Tester: 2-3 weeks (part-time)
-
-**Total:** ~4-5 person-months
+   - Audio plugin testing experience
 
 ---
 
@@ -808,42 +815,373 @@ TEST(TopologyEngine, RingTopology) {
 
 ---
 
-## 9. Development Timeline
+## 9. Phased Implementation Plan
 
-### Gantt Chart Overview
+This section provides a detailed, actionable plan for implementing the Modal Attractors AU plugin. Each phase builds upon the previous, with clear dependencies, priorities, and success criteria.
+
+### Implementation Overview
+
+The implementation follows a **sequential dependency chain** where each phase must be substantially complete before the next can begin. However, certain activities (like documentation and testing infrastructure) can proceed in parallel once their dependencies are met.
 
 ```
-Week 1-3:   [████████████] Phase 1: Core DSP Port
-Week 4-5:   [████████] Phase 2: AU Shell
-Week 6-8:   [████████████] Phase 3: Voice Coupling
-Week 9-11:  [████████████] Phase 4: Preset System & GUI
-Week 12-13: [████████] Phase 5: Optimization & Polish
-Week 14:    [████] Phase 6: Release & Distribution
-            ↑
-         TODAY
+Phase 1 (Foundation)
+    ↓
+Phase 2 (Integration) ← Testing infrastructure begins
+    ↓
+Phase 3 (Core Features) ← GUI prototyping can start
+    ↓
+Phase 4 (Polish) ← Documentation intensive
+    ↓
+Phase 5 (Release)
 ```
 
-### Milestones
+### Phase 1: Foundation - Core DSP Port
 
-| Milestone | Week | Deliverable |
-|-----------|------|-------------|
-| **M1: DSP Core Complete** | 3 | Standalone test app renders audio |
-| **M2: AU Loads in Logic** | 5 | Basic MIDI playback works |
-| **M3: Coupling Functional** | 8 | Topology presets create emergent behavior |
-| **M4: GUI Complete** | 11 | Professional interface ready |
-| **M5: Beta Release** | 13 | Beta version to testers |
-| **M6: Public Release** | 14 | Signed installer & documentation |
+**Status:** Foundation phase - all subsequent work depends on this
+**Priority:** CRITICAL - blocking all other phases
 
-### Critical Path
+**Objective:** Port ESP32 modal oscillator code to macOS and validate it works identically to the embedded version.
 
-1. **Weeks 1-3**: DSP port (blocking for all else)
-2. **Weeks 4-5**: AU integration (blocking for GUI)
-3. **Weeks 6-8**: Coupling system (key feature)
-4. **Weeks 9-11**: GUI (parallel with optimization)
-5. **Weeks 12-13**: Polish (parallel with beta testing)
-6. **Week 14**: Launch (packaging only)
+**Key Activities:**
 
-**Total Duration:** 14 weeks (~3.5 months)
+1. **Environment Setup**
+   - Set up Xcode project structure
+   - Configure CMake build system
+   - Establish Git workflow and branching strategy
+   - Set up basic CI/CD (optional but recommended)
+
+2. **Core DSP Porting**
+   - Port `modal_node.c/.h` from ESP32 → remove FreeRTOS dependencies
+   - Port `audio_synth.c/.h` → adapt I2S output to buffer-based rendering
+   - Port fast math functions (sin approximation, complex exponentials)
+   - Replace `esp_timer_get_time()` with `mach_absolute_time()`
+   - Remove all embedded-specific code (DMA, interrupts, etc.)
+
+3. **C++ Wrapper Development**
+   - Create `ModalVoice` C++ class wrapping ported C code
+   - Implement sample-rate-agnostic rendering
+   - Add parameter smoothing infrastructure
+   - Design voice state management
+
+4. **Standalone Test Application**
+   - Build command-line test app (no AU yet)
+   - Implement simple MIDI file playback or note sequence
+   - Output to WAV file for offline analysis
+   - Create Python validation scripts
+
+**Success Criteria:**
+- [ ] Code compiles on macOS (Intel + Apple Silicon)
+- [ ] Single voice renders without crashes
+- [ ] Output spectrum matches ESP32 output (>95% correlation)
+- [ ] Works at 44.1, 48, 88.2, and 96 kHz sample rates
+- [ ] CPU usage <1% per voice @ 48kHz (measured on target hardware)
+- [ ] No memory leaks detected (Instruments validation)
+- [ ] Deterministic output (same input → same output)
+
+**Deliverables:**
+- `modal_dsp_port/` source directory with ported C code
+- `ModalVoice.cpp/.h` C++ wrapper class
+- `test_modal_voice` standalone test application
+- Validation report comparing ESP32 vs macOS output
+- CPU profiling report
+
+**Key Risks:**
+- FreeRTOS removal may expose threading assumptions → Mitigation: thorough code review
+- Sample rate flexibility may affect stability → Mitigation: extensive testing at all rates
+- Fast math approximations may behave differently on x86/ARM → Mitigation: cross-platform testing
+
+---
+
+### Phase 2: Integration - Audio Unit Shell
+
+**Status:** Integration phase - enables in-DAW testing
+**Priority:** CRITICAL - required for realistic testing
+**Dependencies:** Phase 1 complete
+
+**Objective:** Create a minimal but functional AU plugin that loads in Logic Pro X and responds to MIDI.
+
+**Key Activities:**
+
+1. **AU Project Setup**
+   - Create Xcode AU bundle project
+   - Configure Info.plist (manufacturer code, plugin ID, etc.)
+   - Set up proper code signing and entitlements
+   - Configure build for universal binary (Intel + Apple Silicon)
+
+2. **AU Implementation**
+   - Subclass `AUInstrumentBase` (recommended) or `AUBase`
+   - Implement required AU callbacks:
+     - `Initialize()`, `Cleanup()`
+     - `Render()` callback (pull-based audio)
+     - `HandleNoteOn()`, `HandleNoteOff()`, `HandleMIDIEvent()`
+   - Implement parameter definitions (start with 10-15 core parameters)
+   - Add AU preset support (factory presets + user presets)
+
+3. **Voice Management**
+   - Implement polyphonic voice allocator (16 voices default)
+   - Voice stealing algorithm (oldest-first or quietest-first)
+   - MIDI note → voice mapping
+   - Voice release and envelope handling
+   - Pitch bend and modulation wheel support
+
+4. **Audio Rendering Integration**
+   - Connect `ModalVoice` instances to AU render callback
+   - Implement lock-free MIDI event queue (audio thread safety)
+   - Handle parameter updates atomically (no locks in audio thread)
+   - Proper buffer management (handle variable buffer sizes)
+
+5. **Testing in Logic Pro X**
+   - Manual testing with MIDI keyboard
+   - Preset save/recall validation
+   - Automation recording/playback
+   - Sample rate switching (44.1 ↔ 96 kHz)
+
+**Success Criteria:**
+- [ ] Plugin loads in Logic Pro X without errors
+- [ ] Passes `auval` validation (Apple's AU validation tool)
+- [ ] MIDI notes trigger voices correctly (all 128 notes)
+- [ ] Polyphony works (can play 16 simultaneous notes)
+- [ ] No audio glitches or dropouts under normal use
+- [ ] Parameters respond to automation correctly
+- [ ] Presets save and recall accurately
+- [ ] Works in GarageBand (secondary AU host)
+
+**Deliverables:**
+- `ModalAttractors.component` AU bundle
+- Installation script or instructions
+- Logic Pro X test project with MIDI examples
+- `auval` test results and logs
+
+**Key Risks:**
+- AU SDK learning curve → Mitigation: hire experienced AU developer
+- Thread safety issues → Mitigation: rigorous lock-free design review
+- Logic certification failure → Mitigation: early and frequent `auval` testing
+
+---
+
+### Phase 3: Core Features - Voice Coupling & Topologies
+
+**Status:** Feature phase - implements unique selling point
+**Priority:** HIGH - differentiates from generic modal synths
+**Dependencies:** Phase 2 complete
+
+**Objective:** Implement the multi-voice coupling system that creates emergent spectral behaviors through network topologies.
+
+**Key Activities:**
+
+1. **Coupling Engine Design**
+   - Design diffusive coupling algorithm (port from Python reference)
+   - Implement sparse matrix representation (most topologies are sparse)
+   - Optimize for cache efficiency (coupling is CPU-intensive)
+   - Support variable coupling strength and update rate
+
+2. **Topology Generators**
+   - Port topology generators from Python:
+     - Ring/Chain topology
+     - Small-world (Watts-Strogatz)
+     - Clustered/Modular
+     - Hub-and-spoke (Star)
+     - Random (Erdős–Rényi)
+     - Complete graph (all-to-all)
+   - Implement topology serialization (save/load with presets)
+
+3. **Coupling Integration**
+   - Add coupling inputs to `ModalVoice` state
+   - Implement coupling update loop (separate from audio rate)
+   - Balance coupling rate vs audio rate (typically 500 Hz coupling)
+   - Ensure numerical stability (coupling can cause instability)
+
+4. **Parameter Exposure**
+   - Add topology selector parameter (dropdown in AU)
+   - Coupling strength parameter (0-1 or dB scale)
+   - Per-mode coupling weights (optional advanced feature)
+   - Topology-specific parameters (e.g., rewiring probability for small-world)
+
+5. **Validation Against Python Simulation**
+   - Export modal state trajectories from plugin
+   - Compare to Python reference simulation
+   - Validate attractor convergence behavior
+   - Ensure emergent phenomena are preserved
+
+**Success Criteria:**
+- [ ] All topology types generate correctly
+- [ ] Coupling creates audible spectral evolution
+- [ ] Behavior matches Python simulation (observables within 10%)
+- [ ] CPU overhead <15% for full 16-voice coupling @ 48kHz
+- [ ] No numerical instabilities (even at extreme coupling strengths)
+- [ ] Topologies serialize/deserialize correctly with presets
+
+**Deliverables:**
+- `TopologyEngine.cpp/.h` with all topology generators
+- `CouplingEngine.cpp/.h` with coupling update logic
+- Updated `ModalVoice` with coupling support
+- Validation report vs Python simulation
+- Performance profiling report (before/after coupling)
+
+**Key Risks:**
+- CPU performance at high polyphony → Mitigation: sparse matrix optimization, SIMD
+- Numerical instability with strong coupling → Mitigation: careful integration method, damping
+- Emergent behavior doesn't translate from Python → Mitigation: close reference comparison, parameter tuning
+
+---
+
+### Phase 4: User Experience - Presets & Interface
+
+**Status:** Polish phase - professional presentation
+**Priority:** MEDIUM-HIGH - essential for release
+**Dependencies:** Phase 3 complete (can start GUI prototyping earlier)
+
+**Objective:** Create a professional user interface and comprehensive preset library that showcases the plugin's capabilities.
+
+**Key Activities:**
+
+1. **Preset Development**
+   - Create 20-30 factory presets covering diverse sounds:
+     - Tonal/harmonic presets (pitched instruments)
+     - Evolving textures (pads, drones)
+     - Percussive/transient sounds
+     - Experimental/noise textures
+   - Organize presets by category
+   - Write descriptions for each preset
+   - Test presets across different sample rates
+
+2. **AU Preset Integration**
+   - Implement AU preset serialization (CFPropertyList/plist)
+   - Factory preset installation and loading
+   - User preset save/load functionality
+   - Preset browser UI (native AU view)
+   - Integration with Logic's preset menu
+
+3. **GUI Development** (Choose one approach)
+
+   **Option A: Generic AU View (Recommended for MVP)**
+   - Use Apple's automatic parameter UI
+   - Faster development, zero maintenance
+   - Consistent with other AU plugins
+   - Limitations: basic aesthetics, limited custom controls
+
+   **Option B: Custom Cocoa/AppKit View**
+   - Design custom interface in Xcode (Interface Builder)
+   - Topology visualization (node-edge graph)
+   - Real-time spectral analyzer
+   - Per-mode parameter sliders with visual feedback
+   - Requires significant additional development effort
+
+4. **Visualization Components** (if custom GUI)
+   - Topology graph view (nodes = voices, edges = coupling)
+   - Node activity visualization (brightness = amplitude)
+   - Spectral analyzer (FFT-based, optional)
+   - Mode weight visualization (per-voice mode amplitudes)
+
+5. **User Documentation**
+   - Parameter reference guide
+   - Topology explanation and tips
+   - Preset usage guide
+   - Quick start tutorial
+
+**Success Criteria:**
+- [ ] Factory presets demonstrate full range of sounds
+- [ ] Presets recall perfectly (no parameter drift)
+- [ ] GUI (if custom) renders at 60fps without audio glitches
+- [ ] All parameters accessible and clearly labeled
+- [ ] Preset browser is intuitive and responsive
+- [ ] Documentation is clear and comprehensive
+
+**Deliverables:**
+- Factory preset library (20-30 presets)
+- AU preset files in standard format
+- GUI implementation (generic or custom)
+- Preset guide document (10-15 pages)
+- Parameter reference document
+
+**Key Risks:**
+- Custom GUI complexity → Mitigation: start with generic AU view, upgrade later
+- GUI causing audio dropouts → Mitigation: strict separation of UI and audio threads
+- Preset compatibility issues → Mitigation: versioning scheme, validation tests
+
+---
+
+### Phase 5: Production Readiness - Optimization & Release
+
+**Status:** Finalization phase
+**Priority:** HIGH - required for public release
+**Dependencies:** Phases 2-4 complete
+
+**Objective:** Optimize performance, ensure stability, and prepare for public distribution.
+
+**Key Activities:**
+
+1. **Performance Optimization**
+   - Profile CPU hotspots (Instruments Time Profiler)
+   - SIMD optimization using Accelerate framework:
+     - Vector sine/cosine (vDSP)
+     - Vector exponentials
+     - Matrix operations for coupling
+   - Optimize memory access patterns (cache-friendly)
+   - Consider oversampling for HQ mode (optional)
+   - Thread pool for coupling computation (if beneficial)
+
+2. **Stability & Quality Assurance**
+   - 24-hour stress test (continuous rendering)
+   - Memory leak detection (Instruments Leaks, Allocations)
+   - Thread safety audit (Thread Sanitizer)
+   - Edge case testing:
+     - Rapid preset changes
+     - Extreme parameter values
+     - High polyphony (32+ voices)
+     - Sample rate changes during playback
+   - Regression testing suite
+
+3. **Cross-Platform Validation**
+   - Test on Intel Macs (multiple models)
+   - Test on Apple Silicon (M1/M2/M3)
+   - Validate universal binary works correctly
+   - Test on multiple macOS versions (12.0+)
+
+4. **Beta Testing**
+   - Recruit 5-10 beta testers:
+     - Electronic musicians
+     - Sound designers
+     - Researchers (for scientific validation)
+   - Provide beta build + test project
+   - Collect structured feedback:
+     - Sound quality
+     - CPU performance
+     - Usability issues
+     - Bug reports
+     - Feature requests
+   - Iterate on feedback
+
+5. **Release Preparation**
+   - Code signing with Apple Developer certificate
+   - Notarization (required for macOS 10.15+)
+   - Create installer package (.pkg) or drag-install
+   - Final `auval` validation
+   - Create demo Logic project
+   - Record tutorial video (10-15 min)
+   - Write user manual (30-40 pages)
+
+**Success Criteria:**
+- [ ] CPU usage <50% @ 16 voices, 48kHz (M1 Mac)
+- [ ] 32+ voices @ 96kHz on modern hardware
+- [ ] Zero crashes in 24-hour stress test
+- [ ] No memory leaks detected
+- [ ] Passes all `auval` tests
+- [ ] Positive beta tester feedback (avg >4.0/5.0)
+- [ ] Successfully notarized by Apple
+
+**Deliverables:**
+- Optimized universal binary
+- Signed and notarized installer
+- User manual (PDF, 30-40 pages)
+- Tutorial video
+- Demo Logic project
+- Beta testing report
+
+**Key Risks:**
+- Performance targets not met → Mitigation: early profiling, SIMD expertise
+- Notarization issues → Mitigation: test early, follow Apple guidelines strictly
+- Beta testers find critical bugs → Mitigation: extra buffer time for fixes
 
 ---
 
@@ -869,70 +1207,27 @@ Week 14:    [████] Phase 6: Release & Distribution
 
 ---
 
-## 11. Budget Estimate
+## 10. Business Considerations
 
-### Development Costs (Contracted)
+### 10.1 Distribution Options
 
-| Role | Rate | Duration | Subtotal |
-|------|------|----------|----------|
-| Senior DSP Engineer | $150/hr | 400 hrs | $60,000 |
-| Objective-C Developer | $120/hr | 300 hrs | $36,000 |
-| QA Tester | $60/hr | 100 hrs | $6,000 |
-| **Total Labor** | | | **$102,000** |
-
-### Software/Hardware
-
-| Item | Cost |
-|------|------|
-| Apple Developer Account | $99/year |
-| Logic Pro X (testing) | $200 |
-| MIDI Controller | $300 |
-| Audio Interface | $400 |
-| macOS Hardware (if needed) | $2,000 |
-| **Total** | **$2,999** |
-
-### Contingency (20%)
-
-| Category | Amount |
-|----------|--------|
-| Labor overrun | $20,400 |
-| Unexpected tools | $1,000 |
-| **Total Contingency** | **$21,400** |
-
-### **Grand Total:** $126,399
-
----
-
-## 12. Business Considerations
-
-### 12.1 Pricing Strategy
-
-**Recommended Price:** $79-$129 USD
-
-**Rationale:**
-- Professional synthesis plugin market range
-- Unique algorithm justifies premium pricing
-- Comparable: Arturia Pigments ($199), Native Instruments Reaktor ($199)
-- Lower than above due to niche market
-
-### 12.2 Distribution Options
-
-1. **Direct Sales** (Gumroad, Paddle)
-   - 95% revenue share
+1. **Direct Sales** (Gumroad, Paddle, etc.)
    - Full customer control
-   - Requires own marketing
+   - Direct user relationships
+   - Requires own marketing and support infrastructure
 
-2. **Plugin Boutique / Splice**
-   - 70-80% revenue share
-   - Built-in audience
-   - Credibility boost
+2. **Plugin Marketplaces** (Plugin Boutique, Splice, etc.)
+   - Built-in audience and discovery
+   - Credibility through established platforms
+   - Reduced marketing burden
 
 3. **Open Source + Donations**
    - Community-driven development
-   - Academic credibility
-   - Patreon/GitHub Sponsors
+   - Academic credibility and transparency
+   - Funding through Patreon/GitHub Sponsors
+   - Aligns with research-oriented nature
 
-### 12.3 Licensing
+### 10.2 Licensing
 
 **Recommended:** Dual licensing
 - **Non-Commercial:** GNU GPL v3 (open source)
@@ -945,7 +1240,7 @@ Week 14:    [████] Phase 6: Release & Distribution
 
 ---
 
-## 13. Success Criteria
+## 11. Success Criteria
 
 ### Technical Success
 
@@ -972,7 +1267,7 @@ Week 14:    [████] Phase 6: Release & Distribution
 
 ---
 
-## 14. Future Roadmap (Post-V1)
+## 12. Future Roadmap (Post-V1)
 
 ### V1.1: Polish & Expansion
 - MPE support (MIDI Polyphonic Expression)
@@ -994,9 +1289,9 @@ Week 14:    [████] Phase 6: Release & Distribution
 
 ---
 
-## 15. Conclusion
+## 13. Conclusion
 
-The Modal Attractors AU plugin represents a unique opportunity to bring cutting-edge synthesis research to professional music production. By leveraging the proven ESP32 implementation, we can deliver a high-quality, performant plugin in a reasonable timeframe (14 weeks) with manageable risk.
+The Modal Attractors AU plugin represents a unique opportunity to bring cutting-edge synthesis research to professional music production. By leveraging the proven ESP32 implementation, we can deliver a high-quality, performant plugin with manageable risk through a phased development approach.
 
 The core DSP code is mature and well-tested, and the AU wrapper is a well-understood engineering task. The resulting instrument will offer sounds unavailable in conventional synthesizers, appealing to sound designers, electronic musicians, and researchers alike.
 
@@ -1010,11 +1305,11 @@ The core DSP code is mature and well-tested, and the AU wrapper is a well-unders
 
 ### Recommended Next Steps
 
-1. **Approve proposal** and secure budget
-2. **Hire AU developer** (critical path dependency)
-3. **Begin Phase 1** (DSP port) immediately
-4. **Establish beta tester list** (recruit early)
-5. **Create project repository** (GitHub private or public)
+1. **Review and approve technical approach**
+2. **Assemble development team** with required expertise (AU developer is critical)
+3. **Begin Phase 1** (DSP port) - foundation for all subsequent work
+4. **Establish beta tester list** for later validation phases
+5. **Set up project repository and development infrastructure**
 
 ---
 
