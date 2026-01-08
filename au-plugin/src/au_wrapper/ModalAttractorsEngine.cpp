@@ -33,11 +33,17 @@ void modal_attractors_engine_init(ModalAttractorsEngine* engine,
     engine->master_gain = kMasterGain_Default;
     engine->coupling_strength = kCouplingStrength_Default;
     engine->topology_type = kTopology_Default;
+    engine->personality = kPersonality_Default;
 
     // Set default topology
     engine->topology_engine->generateTopology(
         TopologyType::Ring,
         engine->coupling_strength
+    );
+
+    // Set default personality on all voices
+    engine->voice_allocator->setPersonality(
+        static_cast<node_personality_t>(engine->personality)
     );
 
     engine->initialized = true;
@@ -122,7 +128,7 @@ void modal_attractors_engine_set_parameter(ModalAttractorsEngine* engine,
             engine->topology_engine->setCouplingStrength(value);
             break;
 
-        case kParam_Topology:
+        case kParam_Topology: {
             engine->topology_type = static_cast<int>(value);
             // Map int to topology type
             TopologyType topo = TopologyType::Ring;
@@ -137,8 +143,21 @@ void modal_attractors_engine_set_parameter(ModalAttractorsEngine* engine,
             }
             engine->topology_engine->generateTopology(topo, engine->coupling_strength);
             break;
+        }
 
-        // TODO: Add other parameter cases
+        case kParam_Personality: {
+            engine->personality = static_cast<int>(value);
+            // Map int to personality type
+            // 0 = PERSONALITY_RESONATOR (resonant mode - decays to silence)
+            // 1 = PERSONALITY_SELF_OSCILLATOR (self-driving mode - continuous sound)
+            node_personality_t personality = (engine->personality == 0)
+                ? PERSONALITY_RESONATOR
+                : PERSONALITY_SELF_OSCILLATOR;
+            engine->voice_allocator->setPersonality(personality);
+            break;
+        }
+
+        // TODO: Add other parameter cases (mode frequencies, damping, weights, poke parameters)
 
         default:
             break;
