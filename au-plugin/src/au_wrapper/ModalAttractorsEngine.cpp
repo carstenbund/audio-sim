@@ -35,6 +35,26 @@ void modal_attractors_engine_init(ModalAttractorsEngine* engine,
     engine->topology_type = kTopology_Default;
     engine->personality = kPersonality_Default;
 
+    // Initialize default mode parameters (harmonic series with slight detuning)
+    engine->mode_freq_multipliers[0] = 1.0f;   // Fundamental
+    engine->mode_freq_multipliers[1] = 1.01f;  // Slightly detuned
+    engine->mode_freq_multipliers[2] = 2.0f;   // Second harmonic
+    engine->mode_freq_multipliers[3] = 3.0f;   // Third harmonic
+
+    engine->mode_dampings[0] = 0.5f;
+    engine->mode_dampings[1] = 0.6f;
+    engine->mode_dampings[2] = 0.8f;
+    engine->mode_dampings[3] = 1.0f;
+
+    engine->mode_weights[0] = 1.0f;
+    engine->mode_weights[1] = 0.7f;
+    engine->mode_weights[2] = 0.5f;
+    engine->mode_weights[3] = 0.3f;
+
+    // Initialize default poke parameters
+    engine->poke_strength = kPokeStrength_Default;
+    engine->poke_duration_ms = kPokeDuration_Default;
+
     // Set default topology
     engine->topology_engine->generateTopology(
         TopologyType::Ring,
@@ -45,6 +65,10 @@ void modal_attractors_engine_init(ModalAttractorsEngine* engine,
     engine->voice_allocator->setPersonality(
         static_cast<node_personality_t>(engine->personality)
     );
+
+    // Apply default poke parameters to all voices
+    engine->voice_allocator->setPokeStrength(engine->poke_strength);
+    engine->voice_allocator->setPokeDuration(engine->poke_duration_ms);
 
     engine->initialized = true;
 }
@@ -157,7 +181,97 @@ void modal_attractors_engine_set_parameter(ModalAttractorsEngine* engine,
             break;
         }
 
-        // TODO: Add other parameter cases (mode frequencies, damping, weights, poke parameters)
+        // Mode 0 parameters
+        case kParam_Mode0_Frequency:
+            engine->mode_freq_multipliers[0] = value;
+            engine->voice_allocator->setModeParameters(0, value,
+                engine->mode_dampings[0], engine->mode_weights[0]);
+            break;
+
+        case kParam_Mode0_Damping:
+            engine->mode_dampings[0] = value;
+            engine->voice_allocator->setModeParameters(0,
+                engine->mode_freq_multipliers[0], value, engine->mode_weights[0]);
+            break;
+
+        case kParam_Mode0_Weight:
+            engine->mode_weights[0] = value;
+            engine->voice_allocator->setModeParameters(0,
+                engine->mode_freq_multipliers[0], engine->mode_dampings[0], value);
+            break;
+
+        // Mode 1 parameters
+        case kParam_Mode1_Frequency:
+            engine->mode_freq_multipliers[1] = value;
+            engine->voice_allocator->setModeParameters(1, value,
+                engine->mode_dampings[1], engine->mode_weights[1]);
+            break;
+
+        case kParam_Mode1_Damping:
+            engine->mode_dampings[1] = value;
+            engine->voice_allocator->setModeParameters(1,
+                engine->mode_freq_multipliers[1], value, engine->mode_weights[1]);
+            break;
+
+        case kParam_Mode1_Weight:
+            engine->mode_weights[1] = value;
+            engine->voice_allocator->setModeParameters(1,
+                engine->mode_freq_multipliers[1], engine->mode_dampings[1], value);
+            break;
+
+        // Mode 2 parameters
+        case kParam_Mode2_Frequency:
+            engine->mode_freq_multipliers[2] = value;
+            engine->voice_allocator->setModeParameters(2, value,
+                engine->mode_dampings[2], engine->mode_weights[2]);
+            break;
+
+        case kParam_Mode2_Damping:
+            engine->mode_dampings[2] = value;
+            engine->voice_allocator->setModeParameters(2,
+                engine->mode_freq_multipliers[2], value, engine->mode_weights[2]);
+            break;
+
+        case kParam_Mode2_Weight:
+            engine->mode_weights[2] = value;
+            engine->voice_allocator->setModeParameters(2,
+                engine->mode_freq_multipliers[2], engine->mode_dampings[2], value);
+            break;
+
+        // Mode 3 parameters
+        case kParam_Mode3_Frequency:
+            engine->mode_freq_multipliers[3] = value;
+            engine->voice_allocator->setModeParameters(3, value,
+                engine->mode_dampings[3], engine->mode_weights[3]);
+            break;
+
+        case kParam_Mode3_Damping:
+            engine->mode_dampings[3] = value;
+            engine->voice_allocator->setModeParameters(3,
+                engine->mode_freq_multipliers[3], value, engine->mode_weights[3]);
+            break;
+
+        case kParam_Mode3_Weight:
+            engine->mode_weights[3] = value;
+            engine->voice_allocator->setModeParameters(3,
+                engine->mode_freq_multipliers[3], engine->mode_dampings[3], value);
+            break;
+
+        // Poke/excitation parameters
+        case kParam_PokeStrength:
+            engine->poke_strength = value;
+            engine->voice_allocator->setPokeStrength(value);
+            break;
+
+        case kParam_PokeDuration:
+            engine->poke_duration_ms = value;
+            engine->voice_allocator->setPokeDuration(value);
+            break;
+
+        // Note: Polyphony cannot be changed at runtime (would require reallocation)
+        case kParam_Polyphony:
+            // Ignore - polyphony is set at initialization only
+            break;
 
         default:
             break;

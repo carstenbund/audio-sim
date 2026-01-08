@@ -71,6 +71,27 @@ public:
     void setPersonality(node_personality_t personality);
 
     /**
+     * @brief Set mode parameters for all voices
+     * @param mode_idx Mode index (0-3)
+     * @param freq_multiplier Frequency multiplier relative to base
+     * @param damping Damping coefficient
+     * @param weight Audio weight (0.0-1.0)
+     */
+    void setModeParameters(uint8_t mode_idx, float freq_multiplier, float damping, float weight);
+
+    /**
+     * @brief Set poke strength for future note-on events
+     * @param strength Poke strength (0.0-1.0)
+     */
+    void setPokeStrength(float strength);
+
+    /**
+     * @brief Set poke duration for future note-on events
+     * @param duration_ms Poke duration in milliseconds
+     */
+    void setPokeDuration(float duration_ms);
+
+    /**
      * @brief Update all active voices (control rate)
      *
      * Should be called at control rate (500 Hz typically)
@@ -110,6 +131,15 @@ private:
 
     int8_t note_to_voice_[128];        ///< MIDI note → voice mapping (-1 = none)
     float pitch_bend_;                 ///< Current pitch bend amount
+
+    // Mode parameters (stored as multipliers for per-voice application)
+    float mode_freq_multipliers_[4];   ///< Frequency multipliers per mode
+    float mode_dampings_[4];           ///< Damping coefficients per mode
+    float mode_weights_[4];            ///< Audio weights per mode
+
+    // Poke parameters (applied at note-on)
+    float poke_strength_;              ///< Poke strength for excitation
+    float poke_duration_ms_;           ///< Poke duration in milliseconds
 
     float sample_rate_;                ///< Current sample rate
     bool initialized_;                 ///< Initialization flag
