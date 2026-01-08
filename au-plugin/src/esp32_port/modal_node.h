@@ -14,13 +14,34 @@
 #ifndef MODAL_NODE_H
 #define MODAL_NODE_H
 
-#include <complex.h>
 #include <stdint.h>
 #include <stdbool.h>
+
+// Complex number support - use C99 complex.h internally
+#include <complex.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// ============================================================================
+// C-Compatible Complex Type (for ABI boundary)
+// ============================================================================
+
+/**
+ * @brief C-compatible complex float (safe for extern "C" and Swift bridging)
+ *
+ * This struct is used instead of std::complex<float> or float complex in
+ * extern "C" function signatures to ensure C ABI compatibility.
+ *
+ * Internal implementation uses C99's float complex, but this type is used
+ * at the API boundary for safe interoperability with C++, Swift, and other
+ * languages.
+ */
+typedef struct {
+    float re;  ///< Real part
+    float im;  ///< Imaginary part
+} modal_complexf_t;
 
 // ============================================================================
 // Constants
@@ -183,9 +204,9 @@ float modal_node_get_phase_modulation(const modal_node_t* node);
  * @brief Get mode 0 complex amplitude (for network broadcast)
  *
  * @param node Pointer to node structure
- * @return Complex amplitude of mode 0
+ * @return Complex amplitude of mode 0 (C-compatible struct)
  */
-float complex modal_node_get_mode0(const modal_node_t* node);
+modal_complexf_t modal_node_get_mode0(const modal_node_t* node);
 
 /**
  * @brief Start node operation

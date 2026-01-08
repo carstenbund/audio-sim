@@ -7,6 +7,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <cmath>
+#include <complex>
 #include <algorithm>
 
 TopologyEngine::TopologyEngine(uint32_t num_voices)
@@ -113,14 +114,14 @@ void TopologyEngine::updateCoupling(ModalVoice** voices, uint32_t num_voices) {
             float coupling_weight = coupling_matrix_[i][j];
             if (coupling_weight > 0.0f) {
                 // Get mode 0 amplitude from neighbor voice
-                float complex neighbor_amp = voices[j]->getMode0Amplitude();
+                std::complex<float> neighbor_amp = voices[j]->getMode0Amplitude();
 
                 // Diffusive coupling: (neighbor - self) * weight
-                float complex self_amp = voices[i]->getMode0Amplitude();
-                float complex diff = neighbor_amp - self_amp;
+                std::complex<float> self_amp = voices[i]->getMode0Amplitude();
+                std::complex<float> diff = neighbor_amp - self_amp;
 
                 // Apply to mode 0 (can extend to all modes)
-                coupling_inputs[0] += cabsf(diff) * coupling_weight * coupling_strength_;
+                coupling_inputs[0] += std::abs(diff) * coupling_weight * coupling_strength_;
             }
         }
 

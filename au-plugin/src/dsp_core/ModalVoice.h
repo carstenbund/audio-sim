@@ -15,6 +15,7 @@
 #include "../esp32_port/modal_node.h"
 #include "../esp32_port/audio_synth.h"
 #include <cstdint>
+#include <complex>
 
 class ModalVoice {
 public:
@@ -123,10 +124,11 @@ public:
 
     /**
      * @brief Get mode 0 complex amplitude (for coupling broadcast)
-     * @return Complex amplitude
+     * @return Complex amplitude as C++ std::complex
      */
-    float complex getMode0Amplitude() const {
-        return modal_node_get_mode0(&node_);
+    std::complex<float> getMode0Amplitude() const {
+        modal_complexf_t c = modal_node_get_mode0(&node_);
+        return std::complex<float>(c.re, c.im);
     }
 
     /**
