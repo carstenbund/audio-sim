@@ -116,6 +116,13 @@ void VoiceAllocator::setPitchBend(float bend_amount) {
     }
 }
 
+void VoiceAllocator::setPersonality(node_personality_t personality) {
+    // Apply to all voices (both active and inactive)
+    for (uint32_t i = 0; i < max_polyphony_; i++) {
+        voices_[i]->setPersonality(personality);
+    }
+}
+
 void VoiceAllocator::updateVoices() {
     if (!initialized_) return;
 

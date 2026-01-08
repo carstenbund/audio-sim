@@ -65,6 +65,12 @@ public:
     void setPitchBend(float bend_amount);
 
     /**
+     * @brief Set personality for all voices
+     * @param personality Node personality (PERSONALITY_RESONATOR or PERSONALITY_SELF_OSCILLATOR)
+     */
+    void setPersonality(node_personality_t personality);
+
+    /**
      * @brief Update all active voices (control rate)
      *
      * Should be called at control rate (500 Hz typically)
