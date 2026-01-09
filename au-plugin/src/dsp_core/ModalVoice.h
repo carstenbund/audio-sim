@@ -147,6 +147,13 @@ public:
     void setPersonality(node_personality_t personality);
 
     /**
+     * @brief Set poke/excitation parameters
+     * @param strength Poke strength (0.0-1.0)
+     * @param duration_ms Poke duration in milliseconds
+     */
+    void setPokeParameters(float strength, float duration_ms);
+
+    /**
      * @brief Reset voice state
      */
     void reset();
@@ -160,6 +167,10 @@ private:
     uint8_t midi_note_;             ///< Current MIDI note
     float velocity_;                ///< Note velocity (0.0-1.0)
     float pitch_bend_;              ///< Pitch bend amount (-1.0 to +1.0)
+
+    // Poke/excitation parameters
+    float poke_strength_;           ///< Poke strength multiplier
+    float poke_duration_ms_;        ///< Poke duration in milliseconds
 
     uint32_t age_;                  ///< Voice age counter
     uint32_t samples_since_update_; ///< Sample counter for control rate

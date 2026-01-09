@@ -54,6 +54,15 @@ struct ModalAttractorsEngine {
     int topology_type;
     int personality;
 
+    // Per-mode parameters (4 modes)
+    float mode_freq_multipliers[4];  // Frequency multipliers
+    float mode_dampings[4];          // Damping coefficients
+    float mode_weights[4];           // Audio weights
+
+    // Poke/excitation parameters
+    float poke_strength;
+    float poke_duration_ms;
+
     bool initialized;
 };
 

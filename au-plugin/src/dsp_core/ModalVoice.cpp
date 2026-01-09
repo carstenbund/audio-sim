@@ -13,6 +13,8 @@ ModalVoice::ModalVoice(uint8_t voice_id)
     , midi_note_(60)
     , velocity_(0.0f)
     , pitch_bend_(0.0f)
+    , poke_strength_(0.5f)      // Default poke strength
+    , poke_duration_ms_(10.0f)  // Default poke duration
     , age_(0)
     , samples_since_update_(0)
     , samples_per_update_(0)
@@ -59,7 +61,7 @@ void ModalVoice::noteOn(uint8_t midi_note, float velocity) {
     // Apply poke excitation
     poke_event_t poke;
     poke.source_node_id = voice_id_;
-    poke.strength = velocity;
+    poke.strength = velocity * poke_strength_;  // Scale by poke strength parameter
     poke.phase_hint = -1.0f; // Random phase
 
     // Equal weight to all modes
@@ -68,6 +70,9 @@ void ModalVoice::noteOn(uint8_t midi_note, float velocity) {
     }
 
     modal_node_apply_poke(&node_, &poke);
+
+    // Set poke duration (stored in node's excitation envelope)
+    node_.excitation.duration_ms = poke_duration_ms_;
 }
 
 void ModalVoice::noteOff() {
@@ -134,6 +139,11 @@ void ModalVoice::setMode(uint8_t mode_idx, float freq_hz, float damping, float w
 
 void ModalVoice::setPersonality(node_personality_t personality) {
     node_.personality = personality;
+}
+
+void ModalVoice::setPokeParameters(float strength, float duration_ms) {
+    poke_strength_ = strength;
+    poke_duration_ms_ = duration_ms;
 }
 
 void ModalVoice::reset() {

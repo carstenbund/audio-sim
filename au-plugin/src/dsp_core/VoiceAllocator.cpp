@@ -5,11 +5,14 @@
 
 #include "VoiceAllocator.h"
 #include <cstring>
+#include <cmath>
 #include <algorithm>
 
 VoiceAllocator::VoiceAllocator(uint32_t max_polyphony)
     : max_polyphony_(max_polyphony)
     , pitch_bend_(0.0f)
+    , poke_strength_(0.5f)
+    , poke_duration_ms_(10.0f)
     , sample_rate_(48000.0f)
     , initialized_(false)
 {
@@ -21,6 +24,22 @@ VoiceAllocator::VoiceAllocator(uint32_t max_polyphony)
 
     // Initialize note mapping to -1 (no voice assigned)
     memset(note_to_voice_, -1, sizeof(note_to_voice_));
+
+    // Initialize default mode parameters (harmonic series with detuning)
+    mode_freq_multipliers_[0] = 1.0f;
+    mode_freq_multipliers_[1] = 1.01f;
+    mode_freq_multipliers_[2] = 2.0f;
+    mode_freq_multipliers_[3] = 3.0f;
+
+    mode_dampings_[0] = 0.5f;
+    mode_dampings_[1] = 0.6f;
+    mode_dampings_[2] = 0.8f;
+    mode_dampings_[3] = 1.0f;
+
+    mode_weights_[0] = 1.0f;
+    mode_weights_[1] = 0.7f;
+    mode_weights_[2] = 0.5f;
+    mode_weights_[3] = 0.3f;
 }
 
 VoiceAllocator::~VoiceAllocator() {
@@ -120,6 +139,42 @@ void VoiceAllocator::setPersonality(node_personality_t personality) {
     // Apply to all voices (both active and inactive)
     for (uint32_t i = 0; i < max_polyphony_; i++) {
         voices_[i]->setPersonality(personality);
+    }
+}
+
+void VoiceAllocator::setModeParameters(uint8_t mode_idx, float freq_multiplier, float damping, float weight) {
+    if (mode_idx >= 4) return;
+
+    // Store parameters
+    mode_freq_multipliers_[mode_idx] = freq_multiplier;
+    mode_dampings_[mode_idx] = damping;
+    mode_weights_[mode_idx] = weight;
+
+    // Apply to all voices
+    // Note: This updates mode parameters, but voices will recalculate frequencies
+    // based on their current MIDI note when updateFrequencies() is called
+    for (uint32_t i = 0; i < max_polyphony_; i++) {
+        // Get the voice's base frequency (440Hz * 2^((note-69)/12))
+        uint8_t midi_note = voices_[i]->getMIDINote();
+        float base_freq = 440.0f * powf(2.0f, (midi_note - 69) / 12.0f);
+        float freq = base_freq * freq_multiplier;
+        voices_[i]->setMode(mode_idx, freq, damping, weight);
+    }
+}
+
+void VoiceAllocator::setPokeStrength(float strength) {
+    poke_strength_ = strength;
+    // Apply to all voices
+    for (uint32_t i = 0; i < max_polyphony_; i++) {
+        voices_[i]->setPokeParameters(strength, poke_duration_ms_);
+    }
+}
+
+void VoiceAllocator::setPokeDuration(float duration_ms) {
+    poke_duration_ms_ = duration_ms;
+    // Apply to all voices
+    for (uint32_t i = 0; i < max_polyphony_; i++) {
+        voices_[i]->setPokeParameters(poke_strength_, duration_ms);
     }
 }
 
